@@ -14,6 +14,7 @@ import {
   getLoreBardMagicItemPool,
   generateLoreBardBuilds,
   runLoreBardExploration,
+  runSingleBuildExploration,
 } from '../services/BardBenchmarkService';
 import { Character } from '../models/Character';
 import { SavedProfile, ISavedProfile } from '../models/SavedProfile';
@@ -846,6 +847,72 @@ router.get('/explore', async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({
       error: 'Failed to run bard exploration',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * GET /api/bard/explore/:buildId
+ *
+ * Retrieves the full simulated result for a single specific build in the
+ * College of Lore exploration matrix.  Use this endpoint to deep-inspect
+ * any build that appears in the ranked output of GET /explore without
+ * re-running the entire 1976-build matrix.
+ *
+ * Path parameters:
+ *   - buildId (string, required): The exact build identifier returned by
+ *     GET /explore (e.g. in topBuilds[].buildId).  Build IDs encode the
+ *     species, feat combination, and magic item pair.  URL-encode the value
+ *     when it contains spaces or special characters.
+ *
+ * Query parameters:
+ *   - iterations (number, default 25, max 200): Simulation iterations per
+ *     scenario.  Single-build runs can afford higher values than full-matrix
+ *     exploration.  Higher = more accurate results.
+ *   - profile    (string, optional): Campaign profile ID (see GET /scoring-profiles).
+ *   - profileId  (string, optional): MongoDB ObjectId of a saved custom profile
+ *     (see GET /api/bard/profiles).  Takes precedence over `profile`.
+ *
+ * Returns:
+ *   - 200 with the full BardBuildResult (rank, buildId, species, feats, magicItems,
+ *     abilityScores, armorClass, maxHitPoints, charismaModifier, spellSaveDC,
+ *     compositeScore, combatScore, socialScore, partySupportScore, strengths,
+ *     weaknesses, assessment, scenarioScores) and the scoringWeightsUsed.
+ *   - 404 if no build with the given buildId exists in the exploration matrix.
+ */
+router.get('/explore/:buildId', async (req: Request, res: Response) => {
+  try {
+    const { buildId } = req.params;
+
+    const rawIter = parseInt(String(req.query['iterations'] ?? '25'), 10);
+    const iterations = isNaN(rawIter) || rawIter < 1 ? 25 : Math.min(rawIter, 200);
+
+    const profile = req.query['profile'] ? String(req.query['profile']) : undefined;
+    const profileId = req.query['profileId'] ? String(req.query['profileId']) : undefined;
+
+    // Resolve weights: saved DB profile → code profile → default
+    let weightsArg: ScoringWeights | string | undefined = profile;
+    if (profileId && mongoose.isValidObjectId(profileId)) {
+      const saved = await SavedProfile.findById(profileId);
+      if (saved) {
+        weightsArg = weightsFromDoc(saved);
+      }
+    }
+
+    const result = runSingleBuildExploration(buildId, iterations, weightsArg);
+    if (!result) {
+      res.status(404).json({ error: 'Build not found', details: `No build with id "${buildId}" exists in the exploration matrix. Use GET /api/bard/explore to discover valid build IDs.` });
+      return;
+    }
+
+    res.json({
+      build: result,
+      scoringWeightsUsed: resolveWeights(weightsArg),
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to run single-build exploration',
       details: (err as Error).message,
     });
   }

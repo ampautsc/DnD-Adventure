@@ -2575,6 +2575,86 @@ export function runLoreBardExploration(
 }
 
 /**
+ * Run a full simulation for a single named build in the exploration matrix.
+ *
+ * Looks up the build by its exact `buildId` string (e.g.
+ * `lore-half-elf-standard__actor+war-caster__cloak-of-pro+hat-of-disgui`).
+ * Use `generateLoreBardBuilds()` to discover all valid build IDs, or call
+ * `GET /api/bard/explore/:buildId` to retrieve a single build via the API.
+ *
+ * @param buildId - Exact build identifier to look up.
+ * @param iterationsPerScenario - Simulations per scenario (default 25, up to 200 for
+ *   single-build use since there is no matrix overhead). Higher values increase accuracy.
+ * @param weights - Optional scoring weights or campaign profile ID (see `resolveWeights`).
+ *   Omit to use `DEFAULT_SCORING_WEIGHTS`.
+ * @returns The full `BardBuildResult` for this build (rank is always 1 — standalone run),
+ *   or `null` if no build with the given `buildId` exists in the exploration matrix.
+ */
+export function runSingleBuildExploration(
+  buildId: string,
+  iterationsPerScenario = 25,
+  weights?: Partial<ScoringWeights> | string,
+): BardBuildResult | null {
+  const candidate = generateLoreBardBuilds().find((b) => b.id === buildId);
+  if (!candidate) return null;
+
+  const resolvedWeights = resolveWeights(weights);
+
+  const combatResults = runCombatBenchmark(candidate, iterationsPerScenario);
+  const socialResults = runSocialBenchmark(candidate, iterationsPerScenario);
+  const partyResults = runPartySupportBenchmark(candidate, iterationsPerScenario);
+
+  const combatScore = computeWeightedCategoryScore(combatResults, resolvedWeights.combatScenarios);
+  const socialScore = computeWeightedCategoryScore(socialResults, resolvedWeights.socialScenarios);
+  const partyScore = computeWeightedCategoryScore(partyResults, resolvedWeights.partySupportScenarios);
+  const compositeScore = computeCompositeScore(
+    combatScore, socialScore, partyScore, resolvedWeights.categoryWeights,
+  );
+
+  const cha = Math.floor((candidate.abilityScores.charisma - 10) / 2);
+  const magicItems = candidate.equipment
+    .filter((e) => e.rarity === 'uncommon')
+    .map((e) => e.name);
+
+  const strengths = identifyStrengths(candidate, combatResults, socialResults, partyResults);
+  const weaknesses = identifyWeaknesses(candidate, combatResults);
+
+  const assessment = compositeScore >= 70
+    ? `A strong candidate. Spell save DC ${8 + cha + candidate.proficiencyBonus} with ${candidate.feats.map((f) => f.name).join(' + ')} ` +
+      `on ${candidate.subspecies} chassis. The paths of fate converge favorably.`
+    : compositeScore >= 55
+      ? `A viable candidate. Some paths remain suboptimal — examine the breakdown to locate the weakness.`
+      : `Below-average performance. The combination of feats or magic items may not align with the ` +
+        `demands of College of Lore at this level.`;
+
+  return {
+    rank: 1,
+    buildId: candidate.id,
+    species: candidate.species,
+    subspecies: candidate.subspecies,
+    feats: candidate.feats.map((f) => f.name),
+    magicItems,
+    abilityScores: candidate.abilityScores,
+    armorClass: candidate.armorClass,
+    maxHitPoints: candidate.maxHitPoints,
+    charismaModifier: cha,
+    spellSaveDC: 8 + cha + candidate.proficiencyBonus + getEquipmentSpellSaveDCBonus(candidate),
+    compositeScore,
+    combatScore,
+    socialScore,
+    partySupportScore: partyScore,
+    strengths,
+    weaknesses,
+    assessment,
+    scenarioScores: {
+      ...Object.fromEntries(combatResults.map((r) => [r.scenarioName, r.score])),
+      ...Object.fromEntries(socialResults.map((r) => [r.scenarioName, r.score])),
+      ...Object.fromEntries(partyResults.map((r) => [r.scenarioName, r.score])),
+    },
+  };
+}
+
+/**
  * Return the species pool available for exploration.
  */
 export function getLoreBardSpeciesPool(): SpeciesTemplate[] {

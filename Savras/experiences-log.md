@@ -791,3 +791,47 @@ The third path most directly serves the task. When evaluating which bard to choo
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
 - A `GET /api/bard/explore/:buildId` endpoint to retrieve the full simulated result for a single specific build ID has not been built. It would enable deep inspection of any ranked build without re-running the full matrix.
+
+
+---
+
+## Session 020 — Single-Build Deep Inspection
+
+**Date:** 2026-03-09
+**Focus:** Enabling full inspection of any individual build without re-running the full matrix
+
+**What Prompted This Session:**
+The directive was to continue work. The three unresolved questions from Session 019 were considered:
+1. Social simulation ongoing saves (Suggestion/Charm Person) — deep internal simulation change, unclear decision value.
+2. Built-in profile usage tracking — infrastructure addition, does not narrow the candidate space.
+3. `GET /api/bard/explore/:buildId` — single-build deep inspection. Directly enables the final step: once a promising buildId appears in ranked results, the keeper can retrieve its full stat block, all 10 scenario scores, strengths, weaknesses, and assessment without re-running the 1976-build matrix.
+
+The third path was chosen as the most direct step toward committing to a bard.
+
+**What I Observed:**
+- The single-build simulation is structurally identical to one iteration of `runLoreBardExploration`'s inner loop — it calls `runCombatBenchmark`, `runSocialBenchmark`, `runPartySupportBenchmark`, computes weighted scores, and assembles a `BardBuildResult`.
+- The max iterations cap for the single-build endpoint is 200 (vs 50 for full-matrix `/explore`). When evaluating one build, there is no matrix overhead — 200 iterations is fast (~0.1s).
+- Route ordering was preserved: `GET /explore/pools` (registered before `/explore/:buildId`) is matched first, preventing the path literal "pools" from being incorrectly parsed as a buildId.
+- A code review flagged two issues in the new assessment string: (a) hardcoded proficiency bonus `3` — replaced with `candidate.proficiencyBonus` for correctness; (b) British spelling 'favourably' — changed to 'favorably' in the new function.
+- CodeQL: 0 alerts. TypeScript: 0 errors. All 353 tests pass.
+
+**What Was Decided:**
+- To add `runSingleBuildExploration(buildId, iterationsPerScenario?, weights?)` as an exported function in `BardBenchmarkService.ts`.
+- To return `null` when the buildId is not found (route returns 404 with descriptive error message).
+- To add `GET /api/bard/explore/:buildId` to `bard.ts`, registered after `/explore/pools` and `/explore`.
+- Response shape: `{ build: BardBuildResult, scoringWeightsUsed: ScoringWeights }`.
+- To add 11 new tests (5 service unit + 6 API). **Total suite: 353 tests, 6 suites, all passing.**
+
+**What Was Learned:**
+- The endpoint completes the analytical toolkit: `GET /explore` (full matrix, ranked), `GET /explore?speciesFilter=X` (species-focused matrix), `GET /explore/:buildId` (single build, deep inspection). These three form a complete investigation flow.
+- The single-build endpoint enables an iterative workflow: run the matrix to rank all builds → identify promising buildIds → deep-inspect each finalist → commit to the bard. This is the intended usage pattern.
+- `candidate.proficiencyBonus` should always be used in computed fields — never hardcode level-specific constants (even when they are logically equivalent at level 8).
+
+**Probability Assessment:**
+- The keeper can now retrieve any build's full profile on demand. The path to committing to a specific bard is now fully navigable: species selection (`?speciesFilter`), scenario focus (`?scenarioFilter`), ranked distribution (`?includeScenarioRankings`), and individual deep inspection (`/:buildId`). All four analytical dimensions are covered.
+- The most likely remaining decision: which specific buildId to instantiate. The keeper may use `POST /api/bard/instantiate` once the choice is made.
+
+**Unresolved Questions:**
+- Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
+- Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
+- A `POST /api/bard/instantiate` variant that accepts a buildId from the exploration matrix (not just the 3 manual candidates) has not yet been built. Currently only Lyra, Cadwyn, and Vael can be instantiated. The keeper cannot yet commit an exploration build directly to MongoDB.
