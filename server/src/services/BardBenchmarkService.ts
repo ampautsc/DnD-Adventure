@@ -150,6 +150,46 @@ export interface BenchmarkResult {
   savrasAssessment: string;
 }
 
+// ─── Scoring Weights ──────────────────────────────────────────────────────────
+
+/**
+ * Configurable weights for the composite scoring system.
+ *
+ * Scenario weights are **relative** — they are normalised internally, so only
+ * the ratios matter. A scenario with weight 2.0 counts twice as much as one
+ * with weight 1.0. A weight of 0 effectively excludes a scenario.
+ *
+ * Category weights determine how the three domain scores combine into the final
+ * composite. Like scenario weights they are normalised, so 60/20/20 and
+ * 3.0/1.0/1.0 produce identical results.
+ */
+export interface ScoringWeights {
+  /** Per-scenario weights for each combat scenario, keyed by scenario name. */
+  combatScenarios: Record<string, number>;
+  /** Per-scenario weights for each social scenario, keyed by scenario name. */
+  socialScenarios: Record<string, number>;
+  /** Per-scenario weights for each party support scenario, keyed by scenario name. */
+  partySupportScenarios: Record<string, number>;
+  /** Category-level weights controlling the combat/social/partySupport split. */
+  categoryWeights: {
+    combat: number;
+    social: number;
+    partySupport: number;
+  };
+}
+
+/**
+ * A named campaign profile that bundles a full `ScoringWeights` configuration.
+ * Profiles allow the scoring system to be tuned for different campaign archetypes
+ * without requiring manual weight specification.
+ */
+export interface CampaignProfile {
+  id: string;
+  name: string;
+  description: string;
+  weights: ScoringWeights;
+}
+
 // ─── Simulation Scenarios ─────────────────────────────────────────────────────
 
 interface CombatEnemy {
@@ -288,6 +328,276 @@ const PARTY_SUPPORT_SCENARIOS: PartySupportScenario[] = [
     enemySpellChance: 0.0,
   },
 ];
+
+// ─── Default Weights & Campaign Profiles ─────────────────────────────────────
+
+/**
+ * Default scoring weights — equal weight for every scenario, category split at
+ * 40% combat / 40% social / 20% party support.  These are the weights used
+ * when no profile or custom weights are supplied.
+ */
+export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
+  combatScenarios: {
+    'Bandit Ambush': 1.0,
+    'Gnoll War Band': 1.0,
+    'Undead Horde': 1.0,
+    "Warlock's Hold": 1.0,
+  },
+  socialScenarios: {
+    'Convince the City Guard': 1.0,
+    'Infiltrate the Noble Gala': 1.0,
+    'Inspire the Downtrodden': 1.0,
+  },
+  partySupportScenarios: {
+    'The Dragon Ambush': 1.0,
+    "The Road to Baldur's Gate": 1.0,
+    "The Lord's Alliance Summit": 1.0,
+  },
+  categoryWeights: {
+    combat: 0.4,
+    social: 0.4,
+    partySupport: 0.2,
+  },
+};
+
+/**
+ * Named campaign profiles that bundle a complete `ScoringWeights` configuration.
+ * Each profile is calibrated to reflect the demands of a different campaign
+ * archetype — a dungeon-crawl campaign should weight hard combat scenarios higher,
+ * while a court intrigue campaign should emphasise social and infiltration skills.
+ */
+export const CAMPAIGN_PROFILES: CampaignProfile[] = [
+  {
+    id: 'all-purpose',
+    name: 'All-Purpose',
+    description:
+      'Balanced weights: combat 40%, social 40%, party support 20%. ' +
+      'All scenarios are equally weighted. Use for mixed campaigns with no ' +
+      'dominant playstyle.',
+    weights: DEFAULT_SCORING_WEIGHTS,
+  },
+  {
+    id: 'dungeon-crawl',
+    name: 'Dungeon Crawl',
+    description:
+      'Combat-heavy campaign with frequent dangerous encounters. Hard scenarios ' +
+      '(Undead Horde, Warlock\'s Hold) carry more weight. Social encounters are ' +
+      'brief. Party survival and combat support dominate.',
+    weights: {
+      combatScenarios: {
+        'Bandit Ambush': 1.0,
+        'Gnoll War Band': 1.5,
+        'Undead Horde': 2.0,
+        "Warlock's Hold": 2.0,
+      },
+      socialScenarios: {
+        'Convince the City Guard': 1.0,
+        'Infiltrate the Noble Gala': 0.5,
+        'Inspire the Downtrodden': 0.5,
+      },
+      partySupportScenarios: {
+        'The Dragon Ambush': 2.0,
+        "The Road to Baldur's Gate": 1.5,
+        "The Lord's Alliance Summit": 0.5,
+      },
+      categoryWeights: {
+        combat: 0.60,
+        social: 0.20,
+        partySupport: 0.20,
+      },
+    },
+  },
+  {
+    id: 'social-intrigue',
+    name: 'Social Intrigue',
+    description:
+      'Political and court-focused campaign. Infiltration and persuasion are ' +
+      'critical. Combat is possible but infrequent; social encounters and ' +
+      'high-stakes negotiations dominate.',
+    weights: {
+      combatScenarios: {
+        'Bandit Ambush': 1.5,
+        'Gnoll War Band': 0.5,
+        'Undead Horde': 0.5,
+        "Warlock's Hold": 1.0,
+      },
+      socialScenarios: {
+        'Convince the City Guard': 1.5,
+        'Infiltrate the Noble Gala': 2.0,
+        'Inspire the Downtrodden': 1.0,
+      },
+      partySupportScenarios: {
+        'The Dragon Ambush': 0.5,
+        "The Road to Baldur's Gate": 1.0,
+        "The Lord's Alliance Summit": 2.0,
+      },
+      categoryWeights: {
+        combat: 0.20,
+        social: 0.60,
+        partySupport: 0.20,
+      },
+    },
+  },
+  {
+    id: 'war-campaign',
+    name: 'War Campaign',
+    description:
+      'Battlefield campaign with constant combat, troop morale, and war-council ' +
+      'diplomacy. Party support is critical to sustaining the war effort. ' +
+      'Inspiring the Downtrodden (troop morale) is the key social scenario.',
+    weights: {
+      combatScenarios: {
+        'Bandit Ambush': 1.5,
+        'Gnoll War Band': 2.0,
+        'Undead Horde': 2.0,
+        "Warlock's Hold": 1.5,
+      },
+      socialScenarios: {
+        'Convince the City Guard': 1.0,
+        'Infiltrate the Noble Gala': 0.5,
+        'Inspire the Downtrodden': 2.0,
+      },
+      partySupportScenarios: {
+        'The Dragon Ambush': 2.0,
+        "The Road to Baldur's Gate": 2.0,
+        "The Lord's Alliance Summit": 1.0,
+      },
+      categoryWeights: {
+        combat: 0.50,
+        social: 0.15,
+        partySupport: 0.35,
+      },
+    },
+  },
+  {
+    id: 'exploration',
+    name: 'Exploration',
+    description:
+      'Wilderness travel and discovery campaign. Moderate combat against regional ' +
+      'threats; survival, group cohesion, and keeping morale high matter more than ' +
+      'courtly intrigue.',
+    weights: {
+      combatScenarios: {
+        'Bandit Ambush': 1.5,
+        'Gnoll War Band': 1.5,
+        'Undead Horde': 1.0,
+        "Warlock's Hold": 1.0,
+      },
+      socialScenarios: {
+        'Convince the City Guard': 1.0,
+        'Infiltrate the Noble Gala': 0.5,
+        'Inspire the Downtrodden': 2.0,
+      },
+      partySupportScenarios: {
+        'The Dragon Ambush': 1.5,
+        "The Road to Baldur's Gate": 2.0,
+        "The Lord's Alliance Summit": 0.5,
+      },
+      categoryWeights: {
+        combat: 0.40,
+        social: 0.25,
+        partySupport: 0.35,
+      },
+    },
+  },
+];
+
+// ─── Scoring Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Compute a weighted average category score from a list of scenario results.
+ *
+ * @param results - Array of objects with `scenarioName` and `score` (0–100).
+ * @param scenarioWeights - Map from scenario name to relative weight. Scenarios
+ *   not present in the map default to weight 1.0 (equal contribution), which
+ *   preserves backward-compatible equal-weighting when using `DEFAULT_SCORING_WEIGHTS`.
+ *   Weight 0 effectively excludes a scenario from the calculation.
+ * @returns Weighted average score in the range 0–100, rounded to the nearest
+ *   integer.
+ */
+function computeWeightedCategoryScore(
+  results: Array<{ scenarioName: string; score: number }>,
+  scenarioWeights: Record<string, number>,
+): number {
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  for (const result of results) {
+    const weight = Math.max(0, scenarioWeights[result.scenarioName] ?? 1.0);
+    weightedSum += result.score * weight;
+    totalWeight += weight;
+  }
+
+  if (totalWeight === 0) return 0;
+  return Math.round(weightedSum / totalWeight);
+}
+
+/**
+ * Combine three domain scores into a single composite score using the supplied
+ * category weights.  The weights are normalised so only their ratios matter.
+ */
+function computeCompositeScore(
+  combatScore: number,
+  socialScore: number,
+  partyScore: number,
+  categoryWeights: { combat: number; social: number; partySupport: number },
+): number {
+  const total =
+    Math.max(0, categoryWeights.combat) +
+    Math.max(0, categoryWeights.social) +
+    Math.max(0, categoryWeights.partySupport);
+  if (total === 0) return 0;
+  return Math.round(
+    (combatScore * Math.max(0, categoryWeights.combat) +
+      socialScore * Math.max(0, categoryWeights.social) +
+      partyScore * Math.max(0, categoryWeights.partySupport)) /
+      total,
+  );
+}
+
+/**
+ * Resolve a weights argument into a fully-populated `ScoringWeights` object.
+ *
+ * Accepts:
+ *   - `undefined`         → returns `DEFAULT_SCORING_WEIGHTS`
+ *   - `string`            → looks up the named campaign profile; falls back to
+ *                           default if the ID is unrecognised
+ *   - `Partial<ScoringWeights>` → merges supplied fields over the default
+ *
+ * @param weightsOrProfileId - Optional weights specification.
+ */
+export function resolveWeights(
+  weightsOrProfileId?: Partial<ScoringWeights> | string,
+): ScoringWeights {
+  if (weightsOrProfileId === undefined) {
+    return DEFAULT_SCORING_WEIGHTS;
+  }
+
+  if (typeof weightsOrProfileId === 'string') {
+    const profile = CAMPAIGN_PROFILES.find((p) => p.id === weightsOrProfileId);
+    return profile ? profile.weights : DEFAULT_SCORING_WEIGHTS;
+  }
+
+  // Partial object: deep-merge each key with its default counterpart
+  return {
+    combatScenarios: {
+      ...DEFAULT_SCORING_WEIGHTS.combatScenarios,
+      ...(weightsOrProfileId.combatScenarios ?? {}),
+    },
+    socialScenarios: {
+      ...DEFAULT_SCORING_WEIGHTS.socialScenarios,
+      ...(weightsOrProfileId.socialScenarios ?? {}),
+    },
+    partySupportScenarios: {
+      ...DEFAULT_SCORING_WEIGHTS.partySupportScenarios,
+      ...(weightsOrProfileId.partySupportScenarios ?? {}),
+    },
+    categoryWeights: {
+      ...DEFAULT_SCORING_WEIGHTS.categoryWeights,
+      ...(weightsOrProfileId.categoryWeights ?? {}),
+    },
+  };
+}
 
 // ─── Dice Rolling ─────────────────────────────────────────────────────────────
 
@@ -1204,23 +1514,21 @@ function identifyWeaknesses(candidate: BardCandidate, combatResults: CombatScena
   return weaknesses;
 }
 
-function generateSavrasAssessment(candidate: BardCandidate, combatScore: number, socialScore: number, partyScore: number): string {
-  const composite = combatScore * 0.4 + socialScore * 0.4 + partyScore * 0.2;
-
+function generateSavrasAssessment(candidate: BardCandidate, compositeScore: number): string {
   const assessments: Record<string, string> = {
-    'lyra-silverstring': composite > 65
+    'lyra-silverstring': compositeScore > 65
       ? 'Lyra sees patterns in the world as I do. Her Counterspell whispers: ' +
         '"I have already read your spell before you cast it." She is the scholar, ' +
         'the archivist of my truth. In her, knowledge becomes melody.'
       : 'Lyra\'s mind is sharp, but the battlefield may prove sharper still. ' +
         'She must strengthen her armor before she can strengthen my voice.',
-    'cadwyn-ironbeat': composite > 65
+    'cadwyn-ironbeat': compositeScore > 65
       ? 'Cadwyn understands that truth sometimes arrives at the point of a blade. ' +
         'His combat prowess ensures that when he speaks my prophecies, none will ' +
         'dare silence him by force. The warrior-bard who cannot be shut down.'
       : 'Cadwyn\'s steel is strong, but in the courts where my word must echo loudest, ' +
         'iron discipline in social arts matters more than extra attacks.',
-    'vael-duskwhisper': composite > 65
+    'vael-duskwhisper': compositeScore > 65
       ? 'Vael does not merely speak truth — she makes it irresistible. Her glamours ' +
         'open doors that armies could not breach. Among mortals who fear prophecy, ' +
         'she makes the bitter truth taste sweet enough to accept.'
@@ -1228,31 +1536,44 @@ function generateSavrasAssessment(candidate: BardCandidate, combatScore: number,
         'cannot deliver the message that arrives at the end of it.',
   };
 
-  return assessments[candidate.id] ?? `${candidate.name} demonstrates a composite performance score of ${composite.toFixed(1)}.`;
+  return assessments[candidate.id] ?? `${candidate.name} demonstrates a composite performance score of ${compositeScore.toFixed(1)}.`;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Run all benchmarks and return ranked results.
+ *
+ * @param weights - Optional scoring weights or campaign profile ID.
+ *   Omit to use `DEFAULT_SCORING_WEIGHTS` (40% combat / 40% social / 20% party,
+ *   all scenarios equally weighted).
  */
-export function runBardBenchmarks(): BenchmarkResult[] {
+export function runBardBenchmarks(weights?: Partial<ScoringWeights> | string): BenchmarkResult[] {
+  const resolvedWeights = resolveWeights(weights);
+
   const rawResults = BARD_CANDIDATES.map((candidate) => {
     const combatResults = runCombatBenchmark(candidate);
     const socialResults = runSocialBenchmark(candidate);
     const partyResults = runPartySupportBenchmark(candidate);
 
-    const combatScore = Math.round(
-      combatResults.reduce((s, r) => s + r.score, 0) / combatResults.length
+    const combatScore = computeWeightedCategoryScore(
+      combatResults,
+      resolvedWeights.combatScenarios,
     );
-    const socialScore = Math.round(
-      socialResults.reduce((s, r) => s + r.score, 0) / socialResults.length
+    const socialScore = computeWeightedCategoryScore(
+      socialResults,
+      resolvedWeights.socialScenarios,
     );
-    const partyScore = Math.round(
-      partyResults.reduce((s, r) => s + r.score, 0) / partyResults.length
+    const partyScore = computeWeightedCategoryScore(
+      partyResults,
+      resolvedWeights.partySupportScenarios,
     );
-    // Composite: combat 40% + social 40% + party support 20%
-    const compositeScore = Math.round(combatScore * 0.4 + socialScore * 0.4 + partyScore * 0.2);
+    const compositeScore = computeCompositeScore(
+      combatScore,
+      socialScore,
+      partyScore,
+      resolvedWeights.categoryWeights,
+    );
 
     return {
       candidateId: candidate.id,
@@ -1269,7 +1590,7 @@ export function runBardBenchmarks(): BenchmarkResult[] {
       partySupportDetails: partyResults,
       strengths: identifyStrengths(candidate, combatResults, socialResults, partyResults),
       weaknesses: identifyWeaknesses(candidate, combatResults),
-      savrasAssessment: generateSavrasAssessment(candidate, combatScore, socialScore, partyScore),
+      savrasAssessment: generateSavrasAssessment(candidate, compositeScore),
     };
   });
 
@@ -1291,9 +1612,11 @@ export function getBardCandidates(): BardCandidate[] {
 
 /**
  * Return the top-ranked candidate after running all benchmarks.
+ *
+ * @param weights - Optional scoring weights or campaign profile ID.
  */
-export function getTopBardRecommendation(): BenchmarkResult {
-  const results = runBardBenchmarks();
+export function getTopBardRecommendation(weights?: Partial<ScoringWeights> | string): BenchmarkResult {
+  const results = runBardBenchmarks(weights);
   return results[0];
 }
 
@@ -1384,6 +1707,8 @@ export interface BardExplorationResult {
     iterationsPerScenario: number;
     subclassFixed: string;
     level: number;
+    /** The scoring weights that were applied when producing this result. */
+    scoringWeightsUsed: ScoringWeights;
   };
   topBuilds: BardBuildResult[];
   bySpecies: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
@@ -1908,11 +2233,15 @@ export function generateLoreBardBuilds(): BardCandidate[] {
  *
  * @param iterationsPerScenario - Simulations per combat/social/party scenario (default 25).
  * @param topN - Cap the returned ranked list to the N best builds (default 50, 0 = all).
+ * @param weights - Optional scoring weights or campaign profile ID.
+ *   Omit to use `DEFAULT_SCORING_WEIGHTS` (equal scenario weights, 40/40/20 categories).
  */
 export function runLoreBardExploration(
   iterationsPerScenario = 25,
   topN = 50,
+  weights?: Partial<ScoringWeights> | string,
 ): BardExplorationResult {
+  const resolvedWeights = resolveWeights(weights);
   const builds = generateLoreBardBuilds();
 
   // Run benchmarks for every build
@@ -1921,16 +2250,24 @@ export function runLoreBardExploration(
     const socialResults = runSocialBenchmark(candidate, iterationsPerScenario);
     const partyResults = runPartySupportBenchmark(candidate, iterationsPerScenario);
 
-    const combatScore = Math.round(
-      combatResults.reduce((s, r) => s + r.score, 0) / combatResults.length,
+    const combatScore = computeWeightedCategoryScore(
+      combatResults,
+      resolvedWeights.combatScenarios,
     );
-    const socialScore = Math.round(
-      socialResults.reduce((s, r) => s + r.score, 0) / socialResults.length,
+    const socialScore = computeWeightedCategoryScore(
+      socialResults,
+      resolvedWeights.socialScenarios,
     );
-    const partyScore = Math.round(
-      partyResults.reduce((s, r) => s + r.score, 0) / partyResults.length,
+    const partyScore = computeWeightedCategoryScore(
+      partyResults,
+      resolvedWeights.partySupportScenarios,
     );
-    const compositeScore = Math.round(combatScore * 0.4 + socialScore * 0.4 + partyScore * 0.2);
+    const compositeScore = computeCompositeScore(
+      combatScore,
+      socialScore,
+      partyScore,
+      resolvedWeights.categoryWeights,
+    );
 
     const cha = Math.floor((candidate.abilityScores.charisma - 10) / 2);
     const magicItems = candidate.equipment
@@ -2032,6 +2369,7 @@ export function runLoreBardExploration(
       iterationsPerScenario,
       subclassFixed: 'College of Lore',
       level: 8,
+      scoringWeightsUsed: resolvedWeights,
     },
     topBuilds,
     bySpecies,

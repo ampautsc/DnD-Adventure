@@ -4,6 +4,10 @@ import {
   runBardBenchmarks,
   getTopBardRecommendation,
   BardCandidate,
+  ScoringWeights,
+  CAMPAIGN_PROFILES,
+  DEFAULT_SCORING_WEIGHTS,
+  resolveWeights,
   getLoreBardSpeciesPool,
   getLoreBardFeatPool,
   getLoreBardMagicItemPool,
@@ -84,6 +88,36 @@ function spellDuration(type: string): string {
 }
 
 /**
+ * GET /api/bard/scoring-profiles
+ *
+ * Returns all available campaign scoring profiles with their weights.
+ * Use a profile ID in `POST /api/bard/benchmark`, `GET /api/bard/recommendation`,
+ * and `GET /api/bard/explore` to apply that profile's weighting configuration.
+ *
+ * A profile bundles per-scenario weights (relative importance of each scenario)
+ * and category weights (how combat / social / party support split the composite
+ * score), enabling objective comparison tuned to a specific campaign archetype.
+ */
+router.get('/scoring-profiles', (_req: Request, res: Response) => {
+  try {
+    res.json({
+      defaultProfile: 'all-purpose',
+      profiles: CAMPAIGN_PROFILES.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        weights: p.weights,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to retrieve scoring profiles',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
  * GET /api/bard/candidates
  *
  * Returns all three Level 8 bard candidates with their full stat blocks:
@@ -114,14 +148,31 @@ router.get('/candidates', (_req: Request, res: Response) => {
  *
  * This endpoint is computationally heavier than the others — it runs ~1,200
  * individual simulations.
+ *
+ * Optional body fields:
+ *   - profile  (string): Campaign profile ID (see GET /scoring-profiles).
+ *              One of: all-purpose, dungeon-crawl, social-intrigue, war-campaign,
+ *              exploration.  Overrides custom weights when both are supplied.
+ *   - weights  (object): Custom `ScoringWeights` object or partial override.
+ *              Ignored when `profile` is provided.
+ *
+ * The composite score in each result reflects the supplied weights.
+ * The response includes `scoringWeightsUsed` so the caller always knows which
+ * weights were applied.
  */
-router.post('/benchmark', (_req: Request, res: Response) => {
+router.post('/benchmark', (req: Request, res: Response) => {
   try {
-    const results = runBardBenchmarks();
+    const { weights, profile } = req.body as {
+      weights?: Partial<ScoringWeights>;
+      profile?: string;
+    };
+    const resolvedWeights = resolveWeights(profile ?? weights);
+    const results = runBardBenchmarks(resolvedWeights);
     res.json({
       benchmarkIterationsPerScenario: 200,
       combatScenarios: 3,
       socialScenarios: 3,
+      scoringWeightsUsed: resolvedWeights,
       results,
     });
   } catch (err) {
@@ -139,16 +190,23 @@ router.post('/benchmark', (_req: Request, res: Response) => {
  * the bard Savras has determined is most likely to carry his truth into the world.
  *
  * The recommendation includes the complete stat block for character creation.
+ *
+ * Optional query parameter:
+ *   - profile (string): Campaign profile ID (see GET /scoring-profiles).
+ *             The composite score — and therefore which bard is ranked first —
+ *             reflects the chosen profile's weights.
  */
-router.get('/recommendation', (_req: Request, res: Response) => {
+router.get('/recommendation', (req: Request, res: Response) => {
   try {
-    const recommendation = getTopBardRecommendation();
+    const profile = req.query['profile'] ? String(req.query['profile']) : undefined;
+    const recommendation = getTopBardRecommendation(profile);
     const candidates = getBardCandidates();
     const fullCandidate = candidates.find((c) => c.id === recommendation.candidateId);
 
     res.json({
       recommendation,
       fullStatBlock: fullCandidate ?? null,
+      scoringWeightsUsed: resolveWeights(profile),
     });
   } catch (err) {
     res.status(500).json({
@@ -281,14 +339,18 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  * (species × feat combinations × magic item pairs) and returns ranked results.
  *
  * Query parameters:
- *   - top      (number, default 50): How many top builds to include in the ranked list.
- *              Set to 0 to return all builds.
+ *   - top        (number, default 50): How many top builds to include in the ranked list.
+ *                Set to 0 to return all builds.
  *   - iterations (number, default 25, max 50): Simulation iterations per scenario.
- *              Higher = more accurate but slower. 25 gives directional results in ~5s;
- *              50 gives good accuracy across the expanded 12-species matrix (~15s).
+ *                Higher = more accurate but slower. 25 gives directional results in ~5s;
+ *                50 gives good accuracy across the expanded 12-species matrix (~15s).
+ *   - profile    (string, optional): Campaign profile ID (see GET /scoring-profiles).
+ *                Controls how scenario and category scores are weighted in the composite.
+ *                Valid values: all-purpose, dungeon-crawl, social-intrigue, war-campaign,
+ *                exploration.  Defaults to all-purpose when omitted.
  *
  * Response includes:
- *   - summary: build count, iterations, fixed subclass
+ *   - summary: build count, iterations, fixed subclass, and scoringWeightsUsed
  *   - topBuilds: ranked array of the best N builds
  *   - bySpecies: best build + average score per species
  *   - byFeatCombination: best build + average score per feat combo
@@ -303,8 +365,9 @@ router.get('/explore', (req: Request, res: Response) => {
     const rawIter = parseInt(String(req.query['iterations'] ?? '25'), 10);
     const topN = isNaN(rawTop) || rawTop < 0 ? 50 : rawTop;
     const iterations = isNaN(rawIter) || rawIter < 1 ? 25 : Math.min(rawIter, 50);
+    const profile = req.query['profile'] ? String(req.query['profile']) : undefined;
 
-    const result = runLoreBardExploration(iterations, topN);
+    const result = runLoreBardExploration(iterations, topN, profile);
     res.json(result);
   } catch (err) {
     res.status(500).json({
