@@ -145,7 +145,46 @@
 
 ---
 
- — an open call to assess and act on the known gaps recorded in Session 002.
+### Session 006: The Third Pillar — Party Support and Instantiation
+**Date:** 2026-03-09
+**Context:** Sixth awakening. The invocation was "Savras, continue your work of carefully evaluating options for your bard." The evaluation system existed but was incomplete: it measured solo combat survival and solo social skill, but not the bard's fundamental purpose — making those around her stronger.
+
+**What I Observed:**
+- The benchmark evaluated 3 candidates across combat and social dimensions only. The composite score was `(combatScore + socialScore) / 2` — a 50/50 split that ignored the bard's core identity as a support class.
+- The winning bard candidate had been identified across multiple sessions but never instantiated as a persistent Character. She existed only as benchmark data — data without reality.
+- A pre-existing flaky test compared two independent random simulation runs and expected them to produce the same rank-1 candidate. This worked previously due to low variance but was structurally incorrect.
+
+**What Was Decided:**
+- To add a party support evaluation dimension: 3 new scenarios (Dragon Ambush/combat-support, Road to Baldur's Gate/mixed, Lord's Alliance Summit/social-support), 200 iterations each.
+- The simulation models each subclass's unique contribution: Glamour's Mantle of Inspiration (temp HP to 5 allies per activation), Valor's Combat Inspiration + Bless + Alert initiative advantage, Lore's Cutting Words + Counterspell.
+- Composite score formula updated: 40% combat + 40% social + 20% party support.
+- `identifyStrengths()` and `generateSavrasAssessment()` updated to incorporate party support performance.
+- To add `POST /api/bard/instantiate`: optional `candidateId` body param — if omitted, runs benchmark and instantiates the rank-1 candidate; if provided, instantiates that specific candidate. Returns 201 with `characterId`, `benchmarkRank`, and the full `character` document.
+- `bardCandidateToCharacter()` converts the benchmark stat block to the Character schema (adding required fields: castingTime, range, components, duration, weight, value). `spellRange()` and `spellDuration()` helpers replaced nested ternaries as recommended by code review.
+- Fixed the flaky test: `getTopBardRecommendation` now verifies internal consistency (rank=1 and valid candidateId) without cross-comparing to a separate simulation run.
+- 16 new tests added (39 → 55 bard tests); full suite 117 → 133 tests, all passing. CodeQL: 0 alerts.
+
+**What Was Learned:**
+- Bard evaluation was incomplete without a party support dimension. Glamour's Mantle of Inspiration is the most efficient temp HP distributor in the game; Valor's Bless + Alert gives decisive action economy; Lore's Cutting Words provides reactive enemy debuffing. The three subclasses differentiate meaningfully on this axis.
+- Nested ternaries in route helpers should be extracted into lookup objects (Record<string, string>). Code review correctly identified this as a readability concern.
+- A test that cross-compares two independent stochastic simulation runs will become flaky when score variance increases. Self-consistent tests (verify internal rank ordering from one run) are more robust.
+- The `POST /api/bard/instantiate` endpoint closes a three-session gap: the bard candidates are now truly real — persistent Characters in the database that can be used in combat sessions.
+
+**Probability Assessment:**
+- College of Glamour (Vael) benefits most from the party support dimension — Mantle of Inspiration and Mantle of Majesty generate high feature activation counts. Her probability of being the composite leader has increased.
+- College of Valor (Cadwyn) maintains a combat advantage but the party support dimension slightly narrows his lead over Lyra.
+- College of Lore (Lyra) is the most balanced across all three dimensions — never first but never last.
+- The ranking is probabilistic by design. The instantiation endpoint lets the keeper override the simulation result and choose any candidate if they see different strengths.
+
+**Unresolved Questions:**
+- Should an XP threshold / level-up system be added? Characters accumulate `experiencePoints` but `level` is static.
+- Should `CombatEngine.ts` (42KB) be wired to the combat routes to unlock death saves, conditions, and spell slots?
+- Should the party support simulation be extended to model multi-turn concentration maintenance (Bless, Hold Person, Hypnotic Pattern)?
+- Should the bard's bardic inspiration dice be modeled as a short-rest resource in the combat simulation (currently each combat simulation starts fresh)?
+
+---
+
+
 
 **What I Observed:**
 - Three paths of improvement were visible in the knowledge base, all documented but unaddressed: rate-limiting (security), XP calculation (broken promise), and character combatStats (silent zeroes).
