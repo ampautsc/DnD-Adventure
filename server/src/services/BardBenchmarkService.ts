@@ -556,7 +556,7 @@ function simulateSingleCombat(
   const isValorBard = candidate.subclass === 'College of Valor';
   const hasWarCaster = candidate.feats.some((f) => f.name === 'War Caster');
   // Alert: bard always wins initiative — guaranteed to act before enemies in round 1.
-  // Without Alert there is a 50 % chance enemies strike first in round 1.
+  // Without Alert there is a 50% chance enemies strike first in round 1.
   const hasAlert = candidate.feats.some((f) => f.name === 'Alert');
   // Lucky feat: 3 luck points per combat — spend to reroll a failing concentration save.
   let luckyPointsLeft = candidate.feats.some((f) => f.name === 'Lucky') ? 3 : 0;
@@ -586,7 +586,7 @@ function simulateSingleCombat(
 
   let roundsElapsed = 0;
 
-  // ── Initiative: without Alert, enemies have a 50 % chance to act before the bard ──
+  // ── Initiative: without Alert, enemies have a 50% chance to act before the bard ──
   // This models the real-world risk of losing initiative and taking hits before the
   // bard can cast a control spell.
   if (!hasAlert && rollDie(2) === 1) {
@@ -677,17 +677,19 @@ function simulateSingleCombat(
         // Bards have no CON save proficiency — roll is d20 + CON modifier only.
         if (concentrating) {
           const conSaveDC = Math.max(10, Math.floor(dmg / 2));
+          // Roll dice, applying Halfling Lucky (reroll natural 1s) to each die independently,
+          // then apply War Caster advantage (take the higher of two results).
+          const rollWithLuck = (): number => {
+            const raw = rollDie(20);
+            return (hasHalflingLucky && raw === 1) ? rollDie(20) : raw;
+          };
           let conRoll = hasWarCaster
-            ? Math.max(rollDie(20) + con, rollDie(20) + con)
-            : rollDie(20) + con;
-          // Halfling Lucky: if the natural die result was 1, reroll once
-          if (hasHalflingLucky && !hasWarCaster && conRoll - con === 1) {
-            conRoll = Math.max(rollDie(20) + con, conRoll);
-          }
+            ? Math.max(rollWithLuck() + con, rollWithLuck() + con)
+            : rollWithLuck() + con;
           // Lucky feat: spend a luck point to reroll a failing save
           if (conRoll < conSaveDC && luckyPointsLeft > 0) {
             luckyPointsLeft--;
-            const luckyReroll = rollDie(20) + con;
+            const luckyReroll = rollWithLuck() + con;
             conRoll = Math.max(conRoll, luckyReroll);
           }
           if (conRoll < conSaveDC) {

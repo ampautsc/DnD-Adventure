@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–007)
+## Testing (Verified Sessions 002–008)
 
-- 140 tests across 6 suites, all passing as of 2026-03-09 (Session 007).
+- 184 tests across 6 suites, all passing as of 2026-03-09 (Session 008).
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -137,9 +137,9 @@ The system is being built to serve them. The tools under construction are:
 - Enemy re-saves on concentration spells are not modeled (e.g., Hypnotic Pattern targets re-save at end of each turn). Currently, enemies remain controlled until concentration breaks via incoming damage.
 - `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
 
-## The Bard Selection System (Added Session 004, Extended Session 006)
+## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
 
-### Three Candidates Defined
+### Three Candidate Builds (Manual, for comparison benchmarking)
 
 | Candidate | Species | Subclass | Combat Focus | Social Focus | Party Support Focus |
 |-----------|---------|----------|-------------|-------------|---------------------|
@@ -150,31 +150,72 @@ The system is being built to serve them. The tools under construction are:
 ### Benchmarking Architecture
 
 - `server/src/services/BardBenchmarkService.ts` — Pure service, no DB dependency
-- `server/src/routes/bard.ts` — 4 routes: GET /candidates, POST /benchmark, GET /recommendation, POST /instantiate
-- 200 iterations per scenario × 3 combat + 3 social + 3 party support = 1,800 total simulations per benchmark run
+- `server/src/routes/bard.ts` — 6 routes: GET /candidates, POST /benchmark, GET /recommendation, POST /instantiate, GET /explore/pools, GET /explore
+- 200 iterations per scenario × 3 combat + 3 social + 3 party support = 1,800 total simulations per full benchmark run
 - **Composite score formula: 40% combat + 40% social + 20% party support**
 - Results include: per-scenario details, strengths/weaknesses (including party support strength), Savras's assessment
-- **Combat simulation now models concentration mechanics**: enemies controlled by spells are tracked separately from dead enemies; CON saves (advantage with War Caster) determine if concentration holds when the bard is hit; breaks restore controlled enemies at half HP
+- **Combat simulation models**: concentration saves (War Caster = advantage), Lucky feat (3 rerolls/combat on failing saves), Halfling Lucky (reroll natural 1s), Alert (50% chance enemies go first without Alert)
 
 ### API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/bard/candidates` | Returns all 3 candidate stat blocks |
-| POST | `/api/bard/benchmark` | Runs full simulation and returns ranked results |
+| GET | `/api/bard/candidates` | Returns all 3 manually crafted candidate stat blocks |
+| POST | `/api/bard/benchmark` | Runs full 200-iter simulation and returns ranked results |
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate with full stat block |
 | POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
+| GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
+| GET | `/api/bard/explore` | Runs 880-build exploration; supports `?top=N&iterations=M` |
 
-### Instantiation Endpoint Details (Added Session 006)
+### Lore Bard Exploration System (Added Session 008)
 
-`POST /api/bard/instantiate`
-- Optional body: `{ candidateId: string }` — if omitted, runs benchmark and uses rank-1 candidate
-- If `candidateId` provided: instantiates that specific candidate (benchmark rank is informational only)
-- Invalid `candidateId` returns 400 with valid IDs listed
-- Returns 201 with `{ characterId, benchmarkRank, character }`
-- Created Character is a real MongoDB document retrievable via `GET /api/characters/:id`
+**Build Matrix:**
+- 8 species options × (15 feat pairs + 5 Variant Human triples) × 8 magic item pairs = **880 builds**
+- Default iterations: 25 per scenario → 880 builds evaluated in ~450ms
+- `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
+- `runLoreBardExploration(iterations, topN)` — runs all builds, returns ranked BardBuildResult[] + breakdowns
+- `getLoreBardSpeciesPool()`, `getLoreBardFeatPool()`, `getLoreBardMagicItemPool()` — pool accessors
 
-### Key Build Details (Level 8)
+**Base Stat Block (27-point buy, before species/feat bonuses):**
+STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
+
+**Species Pool (8):** Half-Elf (Standard), Half-Elf (Drow-Descent), Tiefling (Standard), Tiefling (Glasya), Variant Human (3 feats), Lightfoot Halfling (Lucky), Protector Aasimar, Wood Elf
+
+**Feat Pool (12):** War Caster, Alert, Inspiring Leader, Lucky, Resilient (CON), Actor (+1 CHA), Fey Touched (+1 CHA), Shadow Touched (+1 CHA), Telekinetic (+1 CHA), Skilled, Tough, Spell Sniper
+
+**Magic Item Pool (8):** Cloak of Protection, Hat of Disguise, +1 Rapier, Boots of Elvenkind, Periapt of Proof against Poison, Instrument of Bards (Canaith Mandolin), Staff of Charming, Ring of Mind Shielding
+
+### Exploration Findings (Session 008, 50 iterations)
+
+**Optimal Feat Combination:** War Caster + Actor (avg composite 58.9 across all species)
+- War Caster: concentration spell reliability (advantage on CON saves)
+- Actor: +1 CHA (raises DC from 14 → 15) + Deception/Performance advantage
+- Second best: Fey Touched + War Caster (55.4 avg), third: Fey Touched + Inspiring Leader (55.2)
+
+**Optimal Magic Items:** Hat of Disguise is the most consistently valuable item
+- +1 Rapier + Hat of Disguise: 55.4 avg best overall  
+- Cloak of Protection + Hat of Disguise: 54.7 avg, best individual score (61)
+- Hat of Disguise appears in 5 of the 8 highest-scoring item combinations
+
+**Species Rankings (avg composite):**
+1. Lightfoot Halfling: 54.1 (Lucky trait = reroll concentration-save nat 1s)
+2. Standard Tiefling: 53.9 (best peak score 61)
+3. Drow-Descent Half-Elf: 53.8 (best peak score 61)
+4. Standard Half-Elf: 53.8
+5. Protector Aasimar: 53.7
+6. Glasya Tiefling: 53.7
+7. Variant Human: 52.5 (3 feats but lower CHA)
+8. Wood Elf: 51.4 (no CHA racial)
+
+**Key Insight:** The gap between best and worst species is only 2.7 composite points. Feat selection matters far more than species. The keeper may choose species on narrative grounds.
+
+**Recommended Build (fact-based):**
+- Species: Half-Elf (Standard or Drow) or Standard Tiefling — any with +2 CHA racial
+- Feats: War Caster + Actor (+1 CHA each path → CHA 18, DC 15)
+- Magic Items: Hat of Disguise + Cloak of Protection or Hat of Disguise + +1 Rapier
+- CHA 18, Spell Save DC 15, AC 14 (15 with Cloak), HP 52
+
+### Key Build Details (Level 8, Manual Candidates)
 
 **Lyra Silverstring (Half-Elf, College of Lore)**
 - STR 8, DEX 14, CON 14, INT 12, WIS 12, CHA 20
@@ -204,11 +245,10 @@ The system is being built to serve them. The tools under construction are:
 
 *Truths not yet fully known. These are probabilities, not facts.*
 
+- Should the Instrument of the Bards (Canaith Mandolin) +1 to spell save DC be modeled in the simulation? Currently unmodeled — stacking with Actor could reach DC 16.
+- Should a "CHA 20 with one feat" build path be added to the exploration? (Uses both ASIs for CHA rather than feats.) DC 16 vs DC 15, but only 1 feat total.
 - Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
-- Should an `experiencePoints` field be added to the Character model so XP accumulates across sessions?
-- Should character HP be updated after combat to reflect damage taken during the session?
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
-- How many heroes are expected to use this system, and what are their skill levels?
 
 ---
 
