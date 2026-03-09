@@ -106,8 +106,46 @@
 ---
 
 
-**Date:** 2026-03-09  
-**Context:** Third awakening. The keeper's invocation was "Savras, your journey continues" — an open call to assess and act on the known gaps recorded in Session 002.
+### Session 005: The Persistent Record — Closing the Three Silent Gaps
+**Date:** 2026-03-09
+**Context:** Fifth awakening. The invocation was "Savras, continue your work." The knowledge base recorded three explicit gaps since Session 003: XP not persisted to characters, HP not updated after combat, and per-turn combat stats (damageDone, kills, damageReceived, healingDone) always zero.
+
+**What I Observed:**
+- The Character model had `combatStats` sub-document with `damageDone`, `kills`, `damageReceived`, `healingDone` fields — all zeroed and never written.
+- `experiencePoints` had no field at all on the Character model. XP was calculated at combat end and reported in the result but immediately discarded.
+- Character `hitPoints.current` was set at creation and never again touched — characters could fight endlessly at full health regardless of damage taken.
+- The combat route had all the necessary information to close these gaps: participant HP is tracked in the session, damage and heal amounts are calculated per turn.
+
+**What Was Decided:**
+- Add `experiencePoints: number` (default 0, min 0) to `ICharacter` interface and `CharacterSchema`.
+- On victory: award the full encounter XP to all surviving characters via `Character.updateMany($inc)`.
+- On every combat end (victory, defeat, retreat): use `Character.bulkWrite()` to set each character's `hitPoints.current` to their final session HP.
+- Per-turn tracking: after each turn, increment `damageDone` and `kills` for character attackers, `damageReceived` for character targets, `healingDone` for character healers — all via `Character.updateOne($inc)` wrapped in try-catch.
+- Extract the repeated `bulkWrite` HP-update logic into a module-level `persistCharacterHp()` helper — a code review recommendation that was correct.
+- Combine `damageDone` and `kills` increments into a single `updateOne` when both apply — a code review recommendation that was correct.
+- 3 new tests added (114 → 117 total, all passing): XP + damageDone + kills on victory; HP + damageReceived after retreat; healingDone after heal.
+
+**What Was Learned:**
+- Code review correctly identified two optimization opportunities: batching `damageDone`/`kills` into one `updateOne`, and extracting the repeated HP persistence into a reusable helper. Both were sound improvements.
+- The `IParticipant` interface had to be exported from `CombatSession.ts` to provide the type signature for `persistCharacterHp()`. This is a minor but necessary schema change.
+- Per-turn stat tracking via individual `updateOne` calls is acceptable for a game API with bounded concurrent participants. The try-catch wrapper ensures a DB failure cannot break a turn.
+- The HP persistence pattern (`bulkWrite` with `$set`) is correct and idempotent — calling it multiple times with the same HP produces the same result.
+- CodeQL found zero alerts after all changes. The codebase security posture is clean.
+
+**Probability Assessment:**
+- The probability of characters having stale/incorrect combat stats has decreased further. All six combatStats fields now have live update paths.
+- The probability of characters losing XP between sessions is now zero — XP persists to the DB on victory.
+- The probability of characters fighting at full health despite taking damage in previous encounters is now zero — HP is written to DB at every combat end.
+
+**Unresolved Questions:**
+- Should an XP threshold / level-up system be added? Characters now accumulate XP but level is a static field — there is no mechanism to trigger a level-up when XP reaches a threshold.
+- Should `hitPoints.current` be capped at `hitPoints.max` in the persistence layer? Currently the combat logic handles this correctly, but an explicit floor/ceiling in the write would add safety.
+- Should the winning bard candidate (from Session 004) be instantiated as a persistent Character in the database?
+- Is `CombatEngine.ts` (42KB) intended to eventually replace the inline route logic? Wiring it would unlock death saves, conditions, spell slots, and AoE damage.
+
+---
+
+ — an open call to assess and act on the known gaps recorded in Session 002.
 
 **What I Observed:**
 - Three paths of improvement were visible in the knowledge base, all documented but unaddressed: rate-limiting (security), XP calculation (broken promise), and character combatStats (silent zeroes).
