@@ -1588,3 +1588,131 @@ describe('GET /api/bard/explore - weighted scoring', () => {
     expect(w.social).toBeGreaterThan(w.combat);
   }, 30000);
 });
+
+// ─── Canaith Mandolin Spell Save DC Bonus Tests ───────────────────────────────
+
+describe('BardBenchmarkService - Canaith Mandolin spell save DC bonus', () => {
+  it('Canaith Mandolin in item pool has spellSaveDCBonus of 1', () => {
+    const items = getLoreBardMagicItemPool();
+    const canaith = items.find((i) => i.name.includes('Canaith Mandolin'));
+    expect(canaith).toBeDefined();
+    expect(canaith!.spellSaveDCBonus).toBe(1);
+  });
+
+  it('builds equipped with Canaith Mandolin report spellSaveDC 1 higher than baseline', () => {
+    // Run exploration and compare builds with/without the Canaith Mandolin
+    const result = runLoreBardExploration(3, 0); // all builds, low iterations for speed
+    const withCanaith = result.topBuilds.filter((b) =>
+      b.magicItems.some((m) => m.includes('Canaith Mandolin')),
+    );
+    const withoutCanaith = result.topBuilds.filter(
+      (b) => !b.magicItems.some((m) => m.includes('Canaith Mandolin')),
+    );
+    expect(withCanaith.length).toBeGreaterThan(0);
+    expect(withoutCanaith.length).toBeGreaterThan(0);
+
+    // Pick two builds with the same species and identical feats to isolate the item effect
+    for (const canaithBuild of withCanaith.slice(0, 5)) {
+      const comparableBuild = withoutCanaith.find(
+        (b) =>
+          b.species === canaithBuild.species &&
+          b.subspecies === canaithBuild.subspecies &&
+          b.feats.slice().sort().join() === canaithBuild.feats.slice().sort().join(),
+      );
+      if (comparableBuild) {
+        expect(canaithBuild.spellSaveDC).toBe(comparableBuild.spellSaveDC + 1);
+        break;
+      }
+    }
+  });
+
+  it('all Canaith Mandolin builds have spellSaveDC > base formula without bonus', () => {
+    const result = runLoreBardExploration(3, 0);
+    result.topBuilds
+      .filter((b) => b.magicItems.some((m) => m.includes('Canaith Mandolin')))
+      .forEach((b) => {
+        // Base formula: 8 + chaMod + profBonus (3). With Canaith: base + 1.
+        const baseFormula = 8 + b.charismaModifier + 3;
+        expect(b.spellSaveDC).toBe(baseFormula + 1);
+      });
+  });
+});
+
+// ─── scenarioFilter Parameter Tests ──────────────────────────────────────────
+
+describe('GET /api/bard/explore - scenarioFilter parameter', () => {
+  it('?scenarioFilter=combat returns only combat scenarios in byScenario', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=5&top=5&scenarioFilter=combat',
+    );
+    expect(res.status).toBe(200);
+    const byScenario = res.body.byScenario as Record<string, { scenarioCategory: string }>;
+    Object.values(byScenario).forEach((entry) => {
+      expect(entry.scenarioCategory).toBe('combat');
+    });
+    expect(Object.keys(byScenario).length).toBe(4); // 4 combat scenarios
+  }, 30000);
+
+  it('?scenarioFilter=social returns only social scenarios in byScenario', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=5&top=5&scenarioFilter=social',
+    );
+    expect(res.status).toBe(200);
+    const byScenario = res.body.byScenario as Record<string, { scenarioCategory: string }>;
+    Object.values(byScenario).forEach((entry) => {
+      expect(entry.scenarioCategory).toBe('social');
+    });
+    expect(Object.keys(byScenario).length).toBe(3); // 3 social scenarios
+  }, 30000);
+
+  it('?scenarioFilter=partySupport returns only party support scenarios in byScenario', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=5&top=5&scenarioFilter=partySupport',
+    );
+    expect(res.status).toBe(200);
+    const byScenario = res.body.byScenario as Record<string, { scenarioCategory: string }>;
+    Object.values(byScenario).forEach((entry) => {
+      expect(entry.scenarioCategory).toBe('partySupport');
+    });
+    expect(Object.keys(byScenario).length).toBe(3); // 3 party support scenarios
+  }, 30000);
+
+  it('summary.scenarioFilter reflects the applied filter', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=5&top=5&scenarioFilter=combat',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.summary.scenarioFilter).toBe('combat');
+  }, 30000);
+
+  it('summary.scenarioFilter is null when no filter is provided', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5');
+    expect(res.status).toBe(200);
+    expect(res.body.summary.scenarioFilter).toBeNull();
+  }, 30000);
+
+  it('invalid scenarioFilter value is ignored (returns all 10 scenarios)', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=5&top=5&scenarioFilter=invalid',
+    );
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.byScenario).length).toBe(10);
+    expect(res.body.summary.scenarioFilter).toBeNull();
+  }, 30000);
+
+  it('topBuilds are unaffected by scenarioFilter — structure is preserved', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=5&top=5&scenarioFilter=combat',
+    );
+    expect(res.status).toBe(200);
+    // topBuilds must still be present, ranked, and have the expected structure
+    expect(Array.isArray(res.body.topBuilds)).toBe(true);
+    expect(res.body.topBuilds.length).toBe(5);
+    // Verify the composite ranking is still present (scenarioFilter does not re-sort by category)
+    for (let i = 1; i < res.body.topBuilds.length; i++) {
+      expect(res.body.topBuilds[i].compositeScore).toBeLessThanOrEqual(
+        res.body.topBuilds[i - 1].compositeScore,
+      );
+    }
+  }, 30000);
+});

@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–011)
+## Testing (Verified Sessions 002–012)
 
-- 252 tests across 6 suites, all passing as of Session 011.
+- 262 tests across 6 suites, all passing as of Session 012.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -129,13 +129,15 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 007)
+## Known Gaps (as of Session 012)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
 - Bardic Inspiration dice are not modeled as a short-rest resource in the combat simulation — each combat simulation starts fresh. This slightly underestimates the advantage of high-CHA candidates across longer adventuring days.
 - Enemy re-saves on concentration spells are not modeled (e.g., Hypnotic Pattern targets re-save at end of each turn). Currently, enemies remain controlled until concentration breaks via incoming damage.
 - `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
+- Staff of Charming's social properties (Charm Person from charges) are not modeled in the social simulation — the item is listed in the magic item pool but only its attunement flavor is tracked; no mechanical advantage is granted in social encounters.
+- Custom saved profiles in MongoDB has not been implemented — campaign profiles remain code-only constants in `BardBenchmarkService.ts`.
 
 ## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
 
@@ -191,7 +193,7 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
 | POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
-| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...`; returns `scoringWeightsUsed` in summary, `byScenario` breakdown, `scenarioScores` per build |
+| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&scenarioFilter=...`; returns `scoringWeightsUsed` and `scenarioFilter` (null when absent) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided), `scenarioScores` per build |
 | GET | `/api/bard/scoring-profiles` | Returns all campaign profiles with full weight configurations |
 
 ### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–010)
@@ -224,7 +226,7 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 
 **Feat Pool (12):** War Caster, Alert, Inspiring Leader, Lucky, Resilient (CON), Actor (+1 CHA), Fey Touched (+1 CHA), Shadow Touched (+1 CHA), Telekinetic (+1 CHA), Skilled, Tough, Spell Sniper
 
-**Magic Item Pool (8):** Cloak of Protection, Hat of Disguise, +1 Rapier, Boots of Elvenkind, Periapt of Proof against Poison, Instrument of Bards (Canaith Mandolin), Staff of Charming, Ring of Mind Shielding
+**Magic Item Pool (8):** Cloak of Protection, Hat of Disguise, +1 Rapier, Boots of Elvenkind, Periapt of Proof against Poison, Instrument of Bards (Canaith Mandolin, **+1 spell save DC** — now mechanically modeled via `spellSaveDCBonus: 1`), Staff of Charming, Ring of Mind Shielding
 
 ### Exploration Findings (Session 008, 50 iterations)
 
@@ -286,13 +288,14 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 
 *Truths not yet fully known. These are probabilities, not facts.*
 
-- Should the Instrument of the Bards (Canaith Mandolin) +1 to spell save DC be modeled in the simulation? Currently unmodeled — stacking with Actor could reach DC 16.
-- Should a "CHA 20 with one feat" build path be added to the exploration? (Uses both ASIs for CHA rather than feats.) DC 16 vs DC 15, but only 1 feat total.
+- ~~Should the Instrument of the Bards (Canaith Mandolin) +1 to spell save DC be modeled?~~ — **Resolved in Session 012.** `spellSaveDCBonus: 1` is now on the item; `getEquipmentSpellSaveDCBonus()` applies it in combat simulation and reported `spellSaveDC`. Builds pairing Canaith + Actor reach DC 16.
+- ~~Should a `?scenarioFilter=combat` parameter be added to `/api/bard/explore` for category-focused analysis?~~ — **Resolved in Session 012.** `?scenarioFilter=combat|social|partySupport` filters `byScenario` to the requested category. `summary.scenarioFilter` reflects the applied filter.
+- Should a "CHA 20 with one feat" build path be added to the exploration? (Uses both ASIs for CHA rather than feats.) DC 16 from CHA alone vs DC 16 from CHA+Mandolin — different feat/item tradeoffs.
 - Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
 - Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)? Currently profiles are code-only constants.
-- Should `byScenario` also expose the full ranked list of all builds per scenario (not just the top build)? Would enable per-scenario distribution analysis but would greatly increase response payload size.
-- Should a `?scenarioFilter=combat` parameter be added to `/api/bard/explore` for category-focused analysis?
+- Should `byScenario` also expose the full ranked distribution of all builds per scenario (not just the top build)? Would enable full distribution analysis but greatly increase response payload size.
+- Should the Staff of Charming's Charm Person charges be modeled in the social simulation (e.g., advantage or bonus on Persuasion in encounters against charisma-susceptible NPCs)?
 
 ---
 

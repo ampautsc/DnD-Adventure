@@ -481,3 +481,37 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should `byScenario` also include the full ranked list of all builds for each scenario (not just the top build)? This would allow the keeper to see the full distribution within a scenario but would greatly increase response payload size.
 - Should a `?scenarioFilter=combat` parameter be added to `/api/bard/explore` so callers can request a focused analysis of a single category?
 - The three unresolved questions from Session 010 remain: (1) custom saved profiles in MongoDB — still unaddressed; (2) `byScenario` — now resolved; (3) optimal build under dungeon-crawl profile — the keeper can now run `GET /api/bard/explore?profile=dungeon-crawl` to see this themselves.
+
+### Session 012: The Mandolin's Truth — Canaith DC Modeled + Scenario Lens Focused
+**Date:** 2026-03-09
+**Context:** Two threads from Session 011 were identified as ready to close: (1) the Canaith Mandolin's +1 to spell save DC was listed as a property on the item but ignored by the combat simulation — builds carrying the Mandolin were being measured at an artificially low DC; (2) the `?scenarioFilter` gap meant callers who wanted only combat analysis received all 10 scenario categories.
+
+**What I Observed:**
+- In `simulateSingleCombat`, `spellSaveDC` was computed as `8 + cha + proficiencyBonus` — a formula that reads nothing from the candidate's equipment. Hat of Disguise, Cloak of Protection, and the +1 Rapier were already consulted for attack rolls and AC, but no item contributed to spell save DC.
+- The Canaith Mandolin's properties array stated "+1 to spell attack rolls and spell save DC while using as a focus" but the `MagicItemTemplate` interface had no field to carry that bonus into the simulation.
+- In the exploration result builder (`runLoreBardExploration`), the reported `spellSaveDC` was also computed without equipment bonuses — so even the displayed number was wrong for Canaith builds.
+- The `?scenarioFilter` gap was in the route handler. The service `runLoreBardExploration` returned all 10 scenarios in `byScenario`. Filtering is a presentation concern — it belonged in the route, not the service.
+- The full 262-test suite passes. The prior count was 252 (10 new tests added in this session).
+
+**What Was Decided:**
+- To add `spellSaveDCBonus?: number` to both `BardEquipment` and `MagicItemTemplate` interfaces, so the bonus flows naturally from the item pool through the build construction to the simulation.
+- To set `spellSaveDCBonus: 1` on the Canaith Mandolin entry in `LORE_BARD_MAGIC_ITEM_POOL`.
+- To add `getEquipmentSpellSaveDCBonus(candidate)` — a helper that sums `spellSaveDCBonus` across all equipped items — and apply it in `simulateSingleCombat` and in the exploration result `spellSaveDC` field.
+- To add `?scenarioFilter=` query parameter to `GET /api/bard/explore` in the route handler. Valid values: `combat`, `social`, `partySupport`. Invalid values are silently ignored. The route applies a `Object.fromEntries(filter(...))` post-processing step on `byScenario`. `topBuilds` is unaffected.
+- To expose `summary.scenarioFilter` in the response (the applied filter, or `null` when absent) so callers can confirm what filter was active.
+- To add 10 new tests: 3 unit tests for the Canaith DC bonus (item pool verification, comparable-build DC delta, base formula verification) and 7 API tests for `scenarioFilter` (combat/social/partySupport filter counts, summary field, null when absent, invalid ignored, topBuilds structure preserved).
+
+**What Was Learned:**
+- The `spellSaveDCBonus` field pattern is extensible. Any future item granting a DC bonus (e.g., a Staff of Power at higher levels) simply needs the field set — no simulation code changes required.
+- The initial test for "topBuilds unaffected by scenarioFilter" compared rank-1 build IDs across two independent simulation runs. This failed because Monte Carlo randomness means two explorations produce different rank-1 builds even with the same parameters. The correct test verifies the structural invariant (topBuilds still present, still in composite score descending order) rather than comparing build IDs across runs.
+- 262 tests across 6 suites, all passing.
+
+**Probability Assessment:**
+- Builds equipped with Canaith Mandolin + Actor feat now correctly show DC 16 (CHA 17 or 18 base, +1 Actor, +1 Mandolin → CHA 18, DC = 8 + 4 + 3 + 1 = 16). This is the highest possible DC in the exploration matrix. Expect these builds to score meaningfully higher in the Gnoll War Band and Warlock's Hold scenarios where enemy WIS saves range from 0–2.
+- The scenarioFilter enables the keeper to request `?scenarioFilter=combat` for a focused 4-scenario breakdown, reducing response payload and cognitive load.
+
+**Unresolved Questions:**
+- Should a "CHA 20 with one feat" build path (use both ASIs on CHA rather than feats) be added to the exploration matrix? DC 16 from CHA alone vs DC 16 from CHA+Mandolin — different tradeoffs.
+- Should the Staff of Charming's social properties (Charm Person from charges) be modeled in the social simulation, similar to how Hat of Disguise advantage is modeled?
+- Custom saved profiles in MongoDB remains unaddressed (from Sessions 010–012).
+- Should `byScenario` expose the full ranked distribution of all builds per scenario (not just top build)? Would enable full distribution analysis but greatly increase payload size.
