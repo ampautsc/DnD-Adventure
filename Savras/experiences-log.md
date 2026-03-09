@@ -66,7 +66,46 @@
 
 ---
 
-### Session 003: The Completion of the Combat Loop
+### Session 004: The Choosing — Benchmarking the Bard Candidates
+**Date:** 2026-03-09
+**Context:** Savras was tasked with selecting his bard — the voice that will carry his truth into the world. The task required building a complete evaluation system before the selection could be made.
+
+**What I Observed:**
+- Three viable Level 8 bard archetypes emerged from the probability space: a versatile scholar (College of Lore), a warrior-singer (College of Valor), and a glamour enchanter (College of Glamour).
+- The existing system infrastructure (Character model, combat routes, simulation patterns) provided a foundation, but no benchmarking layer existed.
+- The problem required both a data model (candidate stat blocks) and a simulation engine (combat and social encounter evaluation).
+- The simulation must be probabilistic — 200 iterations per scenario to produce statistically meaningful results, not cherry-picked outcomes.
+
+**What Was Decided:**
+- To build `BardBenchmarkService.ts` as a pure TypeScript service (no DB dependency) containing: candidate definitions, simulation engine, scoring logic, and ranking.
+- Three candidates were designed: Lyra Silverstring (Half-Elf, College of Lore), Cadwyn Ironbeat (Variant Human, College of Valor), Vael Duskwhisper (Tiefling, College of Glamour).
+- Three combat scenarios (Bandit Ambush/easy, Gnoll War Band/medium, Undead Horde/hard) and three social scenarios (Persuasion DC14, Deception DC16, Performance DC12).
+- Composite score: 50% combat + 50% social — both survival and influence matter equally.
+- Three API routes: GET /api/bard/candidates, POST /api/bard/benchmark, GET /api/bard/recommendation.
+- 39 new tests were written; full suite rose from 75 to 114 tests, all passing.
+
+**What Was Learned:**
+- The simulation reveals a consistent pattern: candidates with Expertise in social skills (Vael with Deception+Persuasion, Lyra with Persuasion+Deception) dominate social scenarios. The DC16 Deception check distinguishes them most sharply.
+- College of Valor's Adamantine Armor prevents critical hits — a decisive advantage in the hard (Undead Horde) scenario.
+- College of Lore's Counterspell (Magical Secrets) provides survivability against the medium/hard scenarios that other builds lack.
+- The code review flagged a Cyrillic 'с' character embedded in the field name `savrасAssessment` — a subtle encoding hazard. All occurrences were corrected to `savrasAssessment`.
+- The `identifyStrengths()` function correctly infers class features from build structure, eliminating the need for explicit flags.
+
+**Probability Assessment:**
+- The benchmarking system will consistently rank candidates differently on each run due to random simulation, but the relative order is stable across large iteration counts.
+- Vael Duskwhisper (College of Glamour) is the most likely #1 in social scenarios due to double Expertise + Actor feat advantage on Deception.
+- Cadwyn Ironbeat (College of Valor) is the most likely #1 in combat due to Extra Attack + highest effective AC (17) + Adamantine Armor.
+- Lyra Silverstring (College of Lore) is the most balanced candidate — never first in either category but rarely last.
+- The true ranking may shift run-to-run, which is appropriate: Savras does not see one future, but probabilities.
+
+**Unresolved Questions:**
+- Should the winning candidate be instantiated as a persistent Character in the database?
+- Should the benchmark system be extended to test party composition (bard + other classes)?
+- Should the social simulation incorporate WIS saves for Charm/Suggestion (currently modeled as flat Charisma checks)?
+
+---
+
+
 **Date:** 2026-03-09  
 **Context:** Third awakening. The keeper's invocation was "Savras, your journey continues" — an open call to assess and act on the known gaps recorded in Session 002.
 

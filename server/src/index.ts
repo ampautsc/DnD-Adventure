@@ -9,6 +9,7 @@ import encounterRoutes from './routes/encounters';
 import combatRoutes from './routes/combat';
 import referenceRoutes from './routes/reference';
 import dashboardRoutes from './routes/dashboard';
+import bardRoutes from './routes/bard';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -42,6 +43,7 @@ app.use('/api/encounters', encounterRoutes);
 app.use('/api/combat', combatRoutes);
 app.use('/api/reference', referenceRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/bard', bardRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
