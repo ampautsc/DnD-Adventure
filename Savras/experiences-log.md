@@ -358,3 +358,43 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should the final build use **Drow-Descent Half-Elf** (bonus DEX, Drow Magic) or **Standard Tiefling** (Hellish Resistance, Infernal Legacy)? The simulation cannot fully differentiate these — both peak at composite 61. The choice may come down to flavour and the campaign's threat profile (fire damage? charm spells?).
 - Should the keeper want to push CHA to 20 (accepting only 1 feat, War Caster), what is the tradeoff? DC 16 vs DC 15 and +5 vs +4 modifier on all social rolls, but losing a feat slot entirely. This has not been evaluated and could be added as a fourth `asmMode` variant.
 - Should the Instrument of the Bards (Canaith Mandolin, which grants +1 to spell attack rolls and DC while attuned) be double-counted with the Actor feat? Currently the simulation does not model the Canaith's +1 bonus — it would effectively bring DC to 16 if stacked with the +1 from Actor.
+
+---
+
+### Session 009: The Expansion of Species — Combat Abilities Revealed
+
+**Date:** 2026-03-09
+**Context:** The keeper asked whether the species data included species combat abilities — specifically Hidden Step for Firbolg, Fey Step for Eladrin, Magic Resistance for Satyr and Yuan-Ti. The existing simulation treated species traits as flavour strings. True turn-by-turn differentiation was absent.
+
+**What I Observed:**
+- The `species.ts` data file was missing Firbolg, Eladrin, Satyr, and Yuan-Ti Pureblood entirely.
+- The existing `LORE_BARD_SPECIES_POOL` had 8 species with `specialTraits` as flavour strings only — no structured combat flags. Species mattered statistically (via ability score bonuses) but not mechanically in the simulation.
+- The simulation handled Halfling Lucky via a hardcoded `candidate.species === 'Halfling'` check — a pattern that could not scale to new species.
+- The `Warlock's Hold` scenario was absent: all combat scenarios used only weapon-attacking enemies. Magic Resistance had no battlefield on which to prove itself.
+
+**What Was Decided:**
+- To add Firbolg, Eladrin, Satyr, and Yuan-Ti Pureblood to `species.ts` with full canonical ability descriptions.
+- To add a `SpeciesCombatTraits` interface and attach it to both `SpeciesTemplate` and `BardCandidate` — making combat traits first-class typed data, not strings.
+- To model Hidden Step, Fey Step, and Magic Resistance mechanically in `simulateSingleCombat`:
+  - **Hidden Step (Firbolg):** on the first round after the control spell establishes concentration, bard uses bonus action to vanish. Enemies must roll attacks with disadvantage (MIN of 2d20). Bard skips weapon attack to maintain stealth.
+  - **Fey Step (Eladrin):** when HP ≤ 40%, bard teleports 30 ft (bonus action). All enemy attacks for that round are skipped (enemies spend their movement re-closing).
+  - **Magic Resistance (Satyr, Yuan-Ti):** when a spell-casting enemy attempts Hold Person, bard rolls WIS save with advantage (MAX of 2d20 + WIS). On failure: concentration breaks; bard takes guaranteed damage.
+- To add a fourth combat scenario: "Warlock's Hold" (hard) — 1 warlock + 2 cultists. The warlock attempts Hold Person each round (40% chance, WIS DC 14). Satyr and Yuan-Ti show measurably higher survival rates here.
+- To reduce the exploration route's iterations cap from 200 to 50 — the 1920-build matrix requires this to remain within the 30-second API response budget.
+
+**What Was Learned:**
+- The `SpeciesCombatTraits` pattern scales cleanly: adding a new species ability requires only adding a field to the interface, a property to the SpeciesTemplate, and a check in `simulateSingleCombat`. No more hardcoded species names.
+- With 12 species, the exploration matrix is now 1920 builds (up from 880). At 25 iterations/scenario, exploration completes in ~2 seconds — still fast.
+- Yuan-Ti Pureblood's combination of CHA+2, Magic Resistance, and Poison Immunity makes it competitive with the existing CHA+2 species pool while offering a unique defensive profile against magical enemies.
+- Firbolg's STR+2/WIS+1 stat block is suboptimal for a Charisma bard, but Hidden Step's combat value (one round of enemy disadvantage on a concentrating bard) may compensate against multiple attackers.
+- Eladrin (DEX+2/INT+1) is similarly stat-suboptimal but Fey Step provides a unique "get out of danger" card that no feat replicates at the same action economy.
+
+**Probability Assessment:**
+- Satyr and Yuan-Ti will rank in the upper tier of the 12-species comparison (both have CHA+2 plus defensive combat traits). Yuan-Ti likely outperforms Satyr slightly in the Warlock's Hold scenario (Poison Immunity adds secondary protection; Satyr's speed advantage matters little in a spell-focused fight).
+- Firbolg will rank near the bottom for overall composite (weak CHA bonuses → lower social and combat scores). But on the Gnoll War Band and Warlock's Hold scenarios specifically, Hidden Step's defensive round may prove surprisingly competitive.
+- The Eladrin will rank lower than most (DEX+2/INT+1 = CHA never reaches 18 or 20 without two feat investments). The Fey Step benefit is situational — it only triggers at ≤40% HP.
+
+**Unresolved Questions:**
+- Should Firbolg Hidden Step also grant advantage on the bard's own attack roll on the turn it's activated? (In RAW, attacking while invisible = advantage, but the bard then loses invisibility after the hit.) Currently modeled as purely defensive (skip attack, maintain stealth).
+- Should an "Autumn Eladrin" variant be added with seasonal CHA-based spells (Calm Emotions, etc.) and a slight CHA affinity, distinguishing it from the DEX-focused generic Eladrin?
+- With 4 combat scenarios and Magic Resistance now mechanically modeled, is the Satyr data sufficient to recommend as a candidate for Savras's champion, or should the social simulation also model charm-resistance advantages?

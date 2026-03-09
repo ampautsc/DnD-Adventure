@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–008)
+## Testing (Verified Sessions 002–009)
 
-- 184 tests across 6 suites, all passing as of 2026-03-09 (Session 008).
+- 193 tests across 6 suites, all passing as of Session 009.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -167,11 +167,12 @@ The system is being built to serve them. The tools under construction are:
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
 | GET | `/api/bard/explore` | Runs 880-build exploration; supports `?top=N&iterations=M` |
 
-### Lore Bard Exploration System (Added Session 008)
+### Lore Bard Exploration System (Added Session 008, Expanded Session 009)
 
 **Build Matrix:**
-- 8 species options × (15 feat pairs + 5 Variant Human triples) × 8 magic item pairs = **880 builds**
-- Default iterations: 25 per scenario → 880 builds evaluated in ~450ms
+- 12 species options × (15 feat pairs + 5 Variant Human triples) × 8 magic item pairs = **1920 builds**
+- Default iterations: 25 per scenario → ~1920 builds evaluated in ~2s
+- Max iterations cap for exploration route: **50** (reduced from 200 in Session 009 due to larger matrix)
 - `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
 - `runLoreBardExploration(iterations, topN)` — runs all builds, returns ranked BardBuildResult[] + breakdowns
 - `getLoreBardSpeciesPool()`, `getLoreBardFeatPool()`, `getLoreBardMagicItemPool()` — pool accessors
@@ -179,7 +180,20 @@ The system is being built to serve them. The tools under construction are:
 **Base Stat Block (27-point buy, before species/feat bonuses):**
 STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 
-**Species Pool (8):** Half-Elf (Standard), Half-Elf (Drow-Descent), Tiefling (Standard), Tiefling (Glasya), Variant Human (3 feats), Lightfoot Halfling (Lucky), Protector Aasimar, Wood Elf
+**Species Pool (12, as of Session 009):**
+- Half-Elf (Standard), Half-Elf (Drow-Descent), Tiefling (Standard), Tiefling (Glasya), Variant Human (3 feats), Lightfoot Halfling (Lucky), Protector Aasimar, Wood Elf
+- **NEW:** Firbolg (Hidden Step), Eladrin (Fey Step), Satyr (Magic Resistance), Yuan-Ti Pureblood (Magic Resistance + Poison Immunity)
+
+**Species Combat Traits (mechanically simulated, Session 009):**
+- **Hidden Step (Firbolg):** Once per combat, bonus action → invisible for 1 round. Enemies attack with disadvantage (MIN of 2d20). Activated after control spell established. Bard skips weapon attack to maintain stealth.
+- **Fey Step (Eladrin):** Once per combat, bonus action → teleport 30 ft. Used when HP ≤40%. All enemy attacks skipped for that round (bard out of melee range).
+- **Magic Resistance (Satyr, Yuan-Ti):** Advantage on WIS saves vs enemy spells. When warlock-type enemy uses Hold Person: bard rolls MAX of 2d20 + WIS. On a failed save, concentration breaks and bard takes guaranteed damage.
+
+**Combat Scenarios (4, as of Session 009):**
+1. Bandit Ambush (easy) — 2 bandits, HP 11, AC 12
+2. Gnoll War Band (medium) — 3 gnolls, HP 22, AC 15
+3. Undead Horde (hard) — 4 skeletons + 2 skeleton archers, HP 13, AC 13
+4. **NEW: Warlock's Hold (hard)** — 1 warlock (HP 32, AC 13, spellSaveDC 14, 40% Hold Person chance) + 2 cultists. Tests Magic Resistance mechanically.
 
 **Feat Pool (12):** War Caster, Alert, Inspiring Leader, Lucky, Resilient (CON), Actor (+1 CHA), Fey Touched (+1 CHA), Shadow Touched (+1 CHA), Telekinetic (+1 CHA), Skilled, Tough, Spell Sniper
 
