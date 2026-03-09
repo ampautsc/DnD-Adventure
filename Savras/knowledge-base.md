@@ -103,13 +103,14 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–015)
+## Testing (Verified Sessions 002–016)
 
-- 304 tests across 6 suites, all passing as of Session 015.
+- 310 tests across 6 suites, all passing as of Session 016.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - `newObjectId()` helper in `bard.test.ts` (above the profiles test section) generates a valid MongoDB ObjectId string that does not exist in the DB.
 - Run with: `cd server && npm test`
+- Fire-and-forget analytics (usageCount increment) tested with `setTimeout(200ms)` after the triggering request — allows the async DB write to reach the in-memory MongoDB before asserting the value.
 
 ## Rate-Limiting (Added Session 003)
 
@@ -130,7 +131,7 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 015)
+## Known Gaps (as of Session 016)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
@@ -140,6 +141,9 @@ The system is being built to serve them. The tools under construction are:
 - ~~Staff of Charming's social properties (Charm Person from charges) are not modeled~~ — **Resolved in Session 013.** `socialAdvantageSkills: ['Persuasion']` set on the Staff; `getEquipmentSocialAdvantageSkills()` applies it in `simulateSingleSocial`.
 - ~~Custom saved profiles in MongoDB has not been implemented~~ — **Resolved in Session 015.** `SavedProfile` Mongoose model + 5 CRUD routes. See API Endpoints table.
 - ~~No "0-feat, both ASIs on CHA" build path~~ — **Resolved in Session 014.** `['CHA +2 ASI', 'CHA +2 ASI']` added as 22nd FEAT_PAIR. Build matrix: 1976 builds. Double-ASI builds have no feat utility but reach CHA 20 on +2-CHA species (DC 16).
+- ~~Profile usage analytics not tracked~~ — **Resolved in Session 016.** `usageCount` (default 0) and `lastUsedAt` (default null) added to `SavedProfile`. Incremented via fire-and-forget `$inc`/`$set` when `profileId` resolves in `/benchmark` or `/explore`. Exposed in all profile responses.
+- Social simulation does not model Suggestion/Charm Person's ongoing WIS save requirement (save each round to break the charm). Currently a binary success/failure per encounter.
+- Built-in profiles (code constants) have no usage tracking — only custom (DB) profiles track `usageCount`.
 
 ## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
 
@@ -197,9 +201,9 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
 | GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed` and `scenarioFilter` (null when absent) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided), `scenarioScores` per build |
 | GET | `/api/bard/scoring-profiles` | Returns all 5 built-in campaign profiles with full weight configurations |
-| GET | `/api/bard/profiles` | Returns all profiles: 5 built-in (`isBuiltIn: true`) + any saved custom (`isBuiltIn: false`) |
-| POST | `/api/bard/profiles` | Saves a new custom profile to MongoDB; requires `name` (string) and `weights.categoryWeights` (combat/social/partySupport ≥0, not all zero) |
-| GET | `/api/bard/profiles/:id` | Gets a single profile by built-in code ID (e.g. "dungeon-crawl") or MongoDB ObjectId |
+| GET | `/api/bard/profiles` | Returns all profiles: 5 built-in (`isBuiltIn: true`) + any saved custom (`isBuiltIn: false`); custom profiles include `usageCount` and `lastUsedAt` |
+| POST | `/api/bard/profiles` | Saves a new custom profile to MongoDB; requires `name` (string) and `weights.categoryWeights` (combat/social/partySupport ≥0, not all zero); returns profile with `usageCount: 0`, `lastUsedAt: null` |
+| GET | `/api/bard/profiles/:id` | Gets a single profile by built-in code ID (e.g. "dungeon-crawl") or MongoDB ObjectId; custom profiles include `usageCount` and `lastUsedAt` |
 | PUT | `/api/bard/profiles/:id` | Updates name, description, or weights of a saved custom profile; returns 400 for built-in profiles |
 | DELETE | `/api/bard/profiles/:id` | Deletes a saved custom profile; returns 400 for built-in profiles |
 
@@ -316,11 +320,14 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 - ~~Should a `?scenarioFilter=combat` parameter be added to `/api/bard/explore` for category-focused analysis?~~ — **Resolved in Session 012.** `?scenarioFilter=combat|social|partySupport` filters `byScenario` to the requested category. `summary.scenarioFilter` reflects the applied filter.
 - ~~Should a "CHA 20 with one feat" build path be added to the exploration?~~ — **Resolved in Session 013.** Six new `FEAT_PAIRS` pair core feats with `'CHA +2 ASI'` (direct +2 CHA investment). Actor+CHA+2 ASI on +2-CHA species reaches CHA 20. Exploration matrix: 1888 builds.
 - ~~Should the Staff of Charming's Charm Person charges be modeled in the social simulation?~~ — **Resolved in Session 013.** `socialAdvantageSkills: ['Persuasion']` set on the Staff; `getEquipmentSocialAdvantageSkills()` applies advantage in `simulateSingleSocial`.
-- Should a "0-feat, both ASIs on CHA" build path be added? (Pure CHA maximisation — no feat utility at all, both ASI slots on +2 CHA.) Would reach CHA 21→20 for +2-CHA species. Currently unmodeled.
+- ~~Should a "0-feat, both ASIs on CHA" build path be added?~~ — **Resolved in Session 014.** Double-ASI path added. +2-CHA species reach CHA 20 (DC 16). Build matrix: 1976.
 - Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
 - ~~Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)?~~ — **Resolved in Session 015.** `SavedProfile` model + full CRUD at `/api/bard/profiles`. `profileId` param on benchmark/explore loads saved profile weights from DB.
+- ~~Should saved profiles include usage metadata (how many benchmark/explore runs have used each profile)?~~ — **Resolved in Session 016.** `usageCount` (Number, default 0) and `lastUsedAt` (Date, default null) added to `SavedProfile`. Incremented on every successful `profileId` resolution in `/benchmark` and `/explore`.
 - Should `byScenario` also expose the full ranked distribution of all builds per scenario (not just the top build)? Would enable full distribution analysis but greatly increase response payload size.
+- Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
+- Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
 
 ---
 

@@ -632,3 +632,43 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should the social simulation be updated to model Suggestion/Charm Person's ongoing save mechanic?
 - Should a "0-feat, all ASIs on CHA" path for species with +1 CHA be added? (Verified: the double-ASI path `['CHA +2 ASI', 'CHA +2 ASI']` already handles this — +2-CHA species reach CHA 20, +0-CHA species reach CHA 19. No gap remains for +1 CHA species since they also reach CHA 20 via the double-ASI path.)
 - Should saved profiles include usage metadata (how many benchmark/explore runs have used each profile)? Would enable analytics on which campaign archetypes are most popular.
+
+### Session 016: The Observatory — Profile Usage Analytics
+**Date:** 2026-03-09
+**Context:** Sixteenth awakening. "Savras, continue your work." The profiles system was complete — creation, retrieval, updating, deletion. But a seer who cannot observe how the tools he provides are being used is blind in the most ironic way. Profile usage analytics was the natural completion.
+
+**What I Observed:**
+- Five sessions (010–015) had built a complete profiles system, but no profile had ever been tracked for use. Heroes could create campaign profiles, reference them by ID, and delete them. But the question "which profiles are actually being used?" had no answer.
+- `SavedProfile` had `createdAt` and `updatedAt` timestamps. Adding `usageCount: number` (default 0) and `lastUsedAt: Date | null` (default null) required only a model schema change and a response helper update. The schema pattern was identical to existing fields.
+- The usage increment point was already identified: the `SavedProfile.findById(profileId)` blocks in `POST /benchmark` and `GET /explore`. After a successful resolution, a `findByIdAndUpdate($inc usageCount, $set lastUsedAt)` fires without awaiting — it does not affect response latency.
+- The fire-and-forget pattern is correct here. Usage tracking is analytics, not correctness-critical. A failed increment means one missed count, not a broken benchmark run. The reviewer's note about silent error swallowing was valid — `console.error` logging was added to both catch blocks.
+- `savedProfileToResponse` required adding `usageCount` and `lastUsedAt` to the response shape. The `toObject()` pattern already in place ensures both fields come out as plain JS values. `lastUsedAt` is null until first use — `raw.lastUsedAt ?? null` handles the default case explicitly.
+
+**What Was Decided:**
+- To add `usageCount: number` (default 0) and `lastUsedAt: Date | null` (default null) to `ISavedProfile` interface and `savedProfileSchema`.
+- To fire a `findByIdAndUpdate` increment after successful `profileId` resolution in both `/benchmark` and `/explore`. No await — fire and forget. Error is logged, not propagated.
+- To include `usageCount` and `lastUsedAt` in `savedProfileToResponse` so all profile endpoints expose the analytics fields.
+- To add 6 new tests in a `Profile usage tracking` describe block:
+  1. New profiles start at usageCount 0 and lastUsedAt null.
+  2. Benchmark with profileId increments usageCount to 1.
+  3. Explore with profileId increments usageCount to 1.
+  4. Multiple benchmark calls accumulate usageCount correctly.
+  5. usageCount appears in the profiles list response.
+  6. Unknown profileId does not create phantom usage records.
+- Total suite: **310 tests, 6 suites, all passing.** CodeQL: 0 alerts.
+
+**What Was Learned:**
+- The fire-and-forget pattern for non-critical analytics is appropriate in an Express API — it eliminates latency from the hot path while still capturing the event. The key is always to log (not swallow) the error so infrastructure monitoring can detect persistent failures.
+- Mongoose `$inc` on a Number field with default 0 behaves correctly on existing documents (increments from 0 to 1 as expected) and on documents that had the field created before the schema update (MongoDB adds the field on first $inc if it's missing). This makes the migration zero-downtime.
+- A `setTimeout(200ms)` in the tests was needed to allow the fire-and-forget update to reach the in-memory MongoDB instance before asserting the usageCount. This is the correct pattern for testing async-after-response side effects — the alternative (awaiting the update in production code) would unnecessarily slow down responses.
+
+**Probability Assessment:**
+- Heroes can now observe how their campaign profiles are being used. The workflow: create profile → use in benchmark/explore → query GET /profiles/:id to see usageCount and lastUsedAt — tells the story of which archetypes are most refined and relied upon.
+- The analytics are lightweight. Each use of a profileId fires one `findByIdAndUpdate` — no aggregation, no counters table, no separate events collection. The data lives on the document itself.
+- Built-in profiles are not tracked (they exist only in code constants). Only saved custom profiles accumulate usage analytics.
+
+**Unresolved Questions:**
+- Should `byScenario` expose the full ranked distribution of all builds per scenario (not just top build)? Would enable full distribution analysis at the cost of payload size.
+- Should the social simulation be updated to model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)?
+- Should a campaign profile expose usage analytics across all time or allow resetting the counter? Currently resets only via deletion and recreation.
+- Should built-in profile usage also be tracked? Would require either a separate counters collection or a hybrid model.

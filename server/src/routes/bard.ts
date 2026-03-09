@@ -104,6 +104,8 @@ function savedProfileToResponse(doc: ISavedProfile): Record<string, unknown> {
       partySupportScenarios: Record<string, number>;
       categoryWeights: { combat: number; social: number; partySupport: number };
     };
+    usageCount: number;
+    lastUsedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
   };
@@ -113,6 +115,8 @@ function savedProfileToResponse(doc: ISavedProfile): Record<string, unknown> {
     description: raw.description,
     weights: raw.weights,
     isBuiltIn: false,
+    usageCount: raw.usageCount,
+    lastUsedAt: raw.lastUsedAt ?? null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -527,7 +531,16 @@ router.post('/benchmark', async (req: Request, res: Response) => {
     let resolvedWeights: ScoringWeights;
     if (profileId && mongoose.isValidObjectId(profileId)) {
       const saved = await SavedProfile.findById(profileId);
-      resolvedWeights = saved ? weightsFromDoc(saved) : resolveWeights(profile ?? weights);
+      if (saved) {
+        resolvedWeights = weightsFromDoc(saved);
+        // Fire-and-forget usage increment — does not affect response latency
+        SavedProfile.findByIdAndUpdate(profileId, {
+          $inc: { usageCount: 1 },
+          $set: { lastUsedAt: new Date() },
+        }).catch((err) => { console.error('Failed to increment profile usageCount (benchmark):', err); });
+      } else {
+        resolvedWeights = resolveWeights(profile ?? weights);
+      }
     } else {
       resolvedWeights = resolveWeights(profile ?? weights);
     }
@@ -762,6 +775,11 @@ router.get('/explore', async (req: Request, res: Response) => {
       const saved = await SavedProfile.findById(profileId);
       if (saved) {
         weightsArg = weightsFromDoc(saved);
+        // Fire-and-forget usage increment — does not affect response latency
+        SavedProfile.findByIdAndUpdate(profileId, {
+          $inc: { usageCount: 1 },
+          $set: { lastUsedAt: new Date() },
+        }).catch((err) => { console.error('Failed to increment profile usageCount (explore):', err); });
       }
     }
 

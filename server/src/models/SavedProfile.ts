@@ -21,6 +21,10 @@ export interface ISavedProfile extends Document {
       partySupport: number;
     };
   };
+  /** Running count of how many times this profile has been used via profileId in /benchmark or /explore. */
+  usageCount: number;
+  /** Timestamp of the most recent use via profileId, or null if never used. */
+  lastUsedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +48,8 @@ const savedProfileSchema = new Schema<ISavedProfile>(
       partySupportScenarios: { type: Schema.Types.Mixed, default: {} },
       categoryWeights: { type: categoryWeightsSchema, required: true },
     },
+    usageCount: { type: Number, default: 0 },
+    lastUsedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
