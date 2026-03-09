@@ -591,3 +591,44 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should `byScenario` expose the full ranked distribution of all builds per scenario (not just top build)?
 - Should a "0-feat, all ASIs on CHA" path for species with +1 CHA be added (reaching CHA 18, DC 14 with no feats)? Currently the double-ASI path only meaningfully reaches DC 16 on +2-CHA species.
 - With enemy re-saves now implemented, should the social simulation also be updated to model Suggestion/Charm Person's ongoing save mechanic (creatures can save at end of each turn)?
+
+---
+
+### Session 015: The Keeper's Vault — Custom Campaign Profiles Persisted to MongoDB
+**Date:** 2026-03-09
+**Context:** Fifteenth awakening. "Savras, continue your work." The custom saved profiles gap had been deferred for five consecutive sessions (010–014). Each session noted it as unresolved and moved to other work. It was time to close it.
+
+**What I Observed:**
+- The scoring system supported 5 built-in code profiles (all-purpose, dungeon-crawl, social-intrigue, war-campaign, exploration) but no way to persist custom configurations across server restarts. A hero who crafted a precisely calibrated weighting for their unique campaign had no way to recall it.
+- The `ScoringWeights` interface and `CampaignProfile` type already existed in `BardBenchmarkService.ts`. The infrastructure was ready; only the persistence layer was missing.
+- No MongoDB model existed for profiles. All service functions accepted `Partial<ScoringWeights> | string` — a design that naturally extended to accept pre-resolved weights from a DB document.
+- `weightsFromDoc` required `doc.toObject()` before spreading the `categoryWeights` subdocument. Mongoose subdocuments do not reliably expose their values through JavaScript spread (`{...doc.weights.categoryWeights}`) — the spread produces the internal Mongoose representation, not the plain property values. `toObject()` recursively converts the document to a plain JS object, resolving this class of bug.
+- The `savedProfileToResponse` and `builtInProfileToResponse` helper functions keep the response shape consistent between the two profile types. A caller receives identical field structure regardless of whether the profile came from code constants or the database.
+
+**What Was Decided:**
+- To create `server/src/models/SavedProfile.ts`: a Mongoose model with `name`, `description`, `weights` (combatScenarios/socialScenarios/partySupportScenarios as `Schema.Types.Mixed`, categoryWeights as a typed sub-schema), and timestamps.
+- To add 5 new routes to `server/src/routes/bard.ts`:
+  - `GET /api/bard/profiles` — lists all profiles (built-in + saved), with `isBuiltIn` flag distinguishing them.
+  - `POST /api/bard/profiles` — validates and saves a custom profile; requires `name` (non-empty string) and `weights` with valid `categoryWeights` (non-negative, not all zero).
+  - `GET /api/bard/profiles/:id` — accepts built-in code IDs (e.g. "dungeon-crawl") or MongoDB ObjectIds. Returns 404 for unknowns.
+  - `PUT /api/bard/profiles/:id` — updates name, description, or weights on a saved profile. Returns 400 for built-in profiles (immutable).
+  - `DELETE /api/bard/profiles/:id` — removes a saved profile. Returns 400 for built-in profiles.
+- To extend `POST /api/bard/benchmark` and `GET /api/bard/explore` with `profileId` parameter (body / query) that loads a saved profile from DB. Takes precedence over `profile` (code ID) and `weights`. Falls back to `profile` or default if ID is not found.
+- To add 25 new tests: 8 for create (validation + happy path), 4 for list, 4 for get-by-id, 3 for update, 3 for delete, and 3 for benchmark/explore profileId integration. Total suite: **304 tests, 6 suites, all passing.** CodeQL: 0 alerts.
+
+**What Was Learned:**
+- Mongoose subdocument spreading is an invisible correctness trap. `{...doc.weights.categoryWeights}` silently produces wrong output when `categoryWeights` is defined by a sub-schema. The fix is always `doc.toObject()` (or `doc.toJSON()`) before any spread of nested sub-schema documents. This should be the standard pattern when converting Mongoose documents to plain objects for business logic consumption.
+- The `builtInProfileToResponse` helper ensures shape consistency between built-in and custom profiles. Without it, the `GET /profiles` list and `GET /profiles/:id` for built-in profiles would construct the response inline, creating drift risk over time.
+- The `Schema.Types.Mixed` type for `combatScenarios`/`socialScenarios`/`partySupportScenarios` is the correct MongoDB storage choice for dynamic-key scenario weight maps. The keys (scenario names) are not known at schema definition time. `Mixed` stores them as plain BSON documents and returns them as plain JS objects after `toObject()`.
+- Grouping the `newObjectId()` helper at the top of the test section eliminates 5 repeated `new (require('mongoose').Types.ObjectId)()` inline calls. Test helpers belong at the section top, not inline.
+
+**Probability Assessment:**
+- Heroes can now save campaign profiles and reference them by ID in all three weighted endpoints (benchmark, explore, recommendation). The workflow is: `POST /profiles` → save → use the returned `id` in subsequent requests. Profiles persist until explicitly deleted.
+- The 5 built-in profiles remain protected from modification or deletion (400 response). This preserves the reference baselines that all documentation, examples, and comparative tests rely on.
+- The `weightsFromDoc`→`resolveWeights` pipeline means saved profiles still benefit from the default fallback for any scenario not explicitly specified. A profile with empty `combatScenarios` but explicit `categoryWeights` will use default per-scenario weights of 1.0 for all combat scenarios. This is the intended behaviour.
+
+**Unresolved Questions:**
+- Should `byScenario` expose the full ranked distribution of all builds per scenario (not just top build)?
+- Should the social simulation be updated to model Suggestion/Charm Person's ongoing save mechanic?
+- Should a "0-feat, all ASIs on CHA" path for species with +1 CHA be added? (Verified: the double-ASI path `['CHA +2 ASI', 'CHA +2 ASI']` already handles this — +2-CHA species reach CHA 20, +0-CHA species reach CHA 19. No gap remains for +1 CHA species since they also reach CHA 20 via the double-ASI path.)
+- Should saved profiles include usage metadata (how many benchmark/explore runs have used each profile)? Would enable analytics on which campaign archetypes are most popular.

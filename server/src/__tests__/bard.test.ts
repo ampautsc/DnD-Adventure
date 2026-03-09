@@ -1924,6 +1924,11 @@ describe('BardBenchmarkService - concentration re-save mechanic', () => {
 
 // ─── Custom Saved Profile CRUD ────────────────────────────────────────────────
 
+/** Generate a fresh valid MongoDB ObjectId string that does not exist in the DB. */
+function newObjectId(): string {
+  return new (require('mongoose').Types.ObjectId)().toString();
+}
+
 const CUSTOM_WEIGHTS = {
   combatScenarios: { 'Bandit Ambush': 2.0, 'Undead Horde': 3.0 },
   socialScenarios: { 'Convince the City Guard': 1.5 },
@@ -2102,7 +2107,7 @@ describe('GET /api/bard/profiles/:id', () => {
   });
 
   it('returns 404 for a valid ObjectId that does not exist in the DB', async () => {
-    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const fakeId = newObjectId();
     const res = await request(app).get(`/api/bard/profiles/${fakeId}`);
     expect(res.status).toBe(404);
   });
@@ -2146,7 +2151,7 @@ describe('PUT /api/bard/profiles/:id', () => {
   });
 
   it('returns 404 when updating a non-existent custom profile', async () => {
-    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const fakeId = newObjectId();
     const res = await request(app).put(`/api/bard/profiles/${fakeId}`).send({ name: 'Ghost' });
     expect(res.status).toBe(404);
   });
@@ -2187,7 +2192,7 @@ describe('DELETE /api/bard/profiles/:id', () => {
   });
 
   it('returns 404 when deleting a non-existent custom profile', async () => {
-    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const fakeId = newObjectId();
     const res = await request(app).delete(`/api/bard/profiles/${fakeId}`);
     expect(res.status).toBe(404);
   });
@@ -2224,7 +2229,7 @@ describe('POST /api/bard/benchmark - profileId support', () => {
   });
 
   it('falls back to default when profileId is not found', async () => {
-    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const fakeId = newObjectId();
     const res = await request(app).post('/api/bard/benchmark').send({ profileId: fakeId });
     expect(res.status).toBe(200);
     expect(res.body.scoringWeightsUsed.categoryWeights.combat).toBeCloseTo(0.4, 5);
@@ -2261,7 +2266,7 @@ describe('GET /api/bard/explore - profileId support', () => {
   }, 60000);
 
   it('falls back to default when ?profileId= is not found', async () => {
-    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const fakeId = newObjectId();
     const res = await request(app).get(`/api/bard/explore?iterations=5&top=5&profileId=${fakeId}`);
     expect(res.status).toBe(200);
     expect(res.body.summary.scoringWeightsUsed.categoryWeights.combat).toBeCloseTo(0.4, 5);

@@ -91,22 +91,44 @@ function spellDuration(type: string): string {
 
 /**
  * Convert a SavedProfile Mongoose document into a plain API response object.
- * Ensures Mixed-typed scenario maps are returned as plain JS objects.
+ * Uses doc.toObject() to ensure Mixed-typed scenario maps are plain JS objects.
  */
 function savedProfileToResponse(doc: ISavedProfile): Record<string, unknown> {
-  return {
-    id: String(doc._id),
-    name: doc.name,
-    description: doc.description,
+  const raw = doc.toObject() as {
+    _id: unknown;
+    name: string;
+    description: string;
     weights: {
-      combatScenarios: (doc.weights.combatScenarios ?? {}) as Record<string, number>,
-      socialScenarios: (doc.weights.socialScenarios ?? {}) as Record<string, number>,
-      partySupportScenarios: (doc.weights.partySupportScenarios ?? {}) as Record<string, number>,
-      categoryWeights: doc.weights.categoryWeights,
-    },
+      combatScenarios: Record<string, number>;
+      socialScenarios: Record<string, number>;
+      partySupportScenarios: Record<string, number>;
+      categoryWeights: { combat: number; social: number; partySupport: number };
+    };
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  return {
+    id: String(raw._id),
+    name: raw.name,
+    description: raw.description,
+    weights: raw.weights,
     isBuiltIn: false,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+/**
+ * Convert a built-in CampaignProfile constant into a plain API response object,
+ * mirroring the shape produced by savedProfileToResponse for custom profiles.
+ */
+function builtInProfileToResponse(p: { id: string; name: string; description: string; weights: ScoringWeights }): Record<string, unknown> {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    weights: p.weights,
+    isBuiltIn: true,
   };
 }
 
@@ -175,13 +197,7 @@ router.get('/profiles', async (_req: Request, res: Response) => {
   try {
     const saved = await SavedProfile.find().sort({ createdAt: -1 });
 
-    const builtIn = CAMPAIGN_PROFILES.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      weights: p.weights,
-      isBuiltIn: true,
-    }));
+    const builtIn = CAMPAIGN_PROFILES.map(builtInProfileToResponse);
 
     const custom = saved.map(savedProfileToResponse);
 
@@ -280,7 +296,7 @@ router.get('/profiles/:id', async (req: Request, res: Response) => {
     // Check built-in profiles first (matched by string code id)
     const builtIn = CAMPAIGN_PROFILES.find((p) => p.id === id);
     if (builtIn) {
-      res.json({ id: builtIn.id, name: builtIn.name, description: builtIn.description, weights: builtIn.weights, isBuiltIn: true });
+      res.json(builtInProfileToResponse(builtIn));
       return;
     }
 

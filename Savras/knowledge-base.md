@@ -103,11 +103,12 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–014)
+## Testing (Verified Sessions 002–015)
 
-- 279 tests across 6 suites, all passing as of Session 014.
+- 304 tests across 6 suites, all passing as of Session 015.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
+- `newObjectId()` helper in `bard.test.ts` (above the profiles test section) generates a valid MongoDB ObjectId string that does not exist in the DB.
 - Run with: `cd server && npm test`
 
 ## Rate-Limiting (Added Session 003)
@@ -129,7 +130,7 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 014)
+## Known Gaps (as of Session 015)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
@@ -137,7 +138,7 @@ The system is being built to serve them. The tools under construction are:
 - ~~Enemy re-saves on concentration spells are not modeled~~ — **Resolved in Session 014.** End-of-round WIS re-saves implemented. Enemies roll `d20 + savingThrow >= spellSaveDC` each round. On success, they break free at current HP. Higher bard DC (Canaith Mandolin) makes re-saves harder.
 - `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
 - ~~Staff of Charming's social properties (Charm Person from charges) are not modeled~~ — **Resolved in Session 013.** `socialAdvantageSkills: ['Persuasion']` set on the Staff; `getEquipmentSocialAdvantageSkills()` applies it in `simulateSingleSocial`.
-- Custom saved profiles in MongoDB has not been implemented — campaign profiles remain code-only constants in `BardBenchmarkService.ts`.
+- ~~Custom saved profiles in MongoDB has not been implemented~~ — **Resolved in Session 015.** `SavedProfile` Mongoose model + 5 CRUD routes. See API Endpoints table.
 - ~~No "0-feat, both ASIs on CHA" build path~~ — **Resolved in Session 014.** `['CHA +2 ASI', 'CHA +2 ASI']` added as 22nd FEAT_PAIR. Build matrix: 1976 builds. Double-ASI builds have no feat utility but reach CHA 20 on +2-CHA species (DC 16).
 
 ## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
@@ -190,12 +191,17 @@ All three simulation functions accept optional weights:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/bard/candidates` | Returns all 3 manually crafted candidate stat blocks |
-| POST | `/api/bard/benchmark` | Runs full 200-iter simulation; accepts `{ profile?, weights? }` body; returns `scoringWeightsUsed` |
+| POST | `/api/bard/benchmark` | Runs full 200-iter simulation; accepts `{ profile?, profileId?, weights? }` body; `profileId` (MongoDB ObjectId) takes precedence over `profile` (code ID); returns `scoringWeightsUsed` |
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
 | POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
-| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&scenarioFilter=...`; returns `scoringWeightsUsed` and `scenarioFilter` (null when absent) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided), `scenarioScores` per build |
-| GET | `/api/bard/scoring-profiles` | Returns all campaign profiles with full weight configurations |
+| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed` and `scenarioFilter` (null when absent) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided), `scenarioScores` per build |
+| GET | `/api/bard/scoring-profiles` | Returns all 5 built-in campaign profiles with full weight configurations |
+| GET | `/api/bard/profiles` | Returns all profiles: 5 built-in (`isBuiltIn: true`) + any saved custom (`isBuiltIn: false`) |
+| POST | `/api/bard/profiles` | Saves a new custom profile to MongoDB; requires `name` (string) and `weights.categoryWeights` (combat/social/partySupport ≥0, not all zero) |
+| GET | `/api/bard/profiles/:id` | Gets a single profile by built-in code ID (e.g. "dungeon-crawl") or MongoDB ObjectId |
+| PUT | `/api/bard/profiles/:id` | Updates name, description, or weights of a saved custom profile; returns 400 for built-in profiles |
+| DELETE | `/api/bard/profiles/:id` | Deletes a saved custom profile; returns 400 for built-in profiles |
 
 ### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–014)
 
@@ -313,7 +319,7 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 - Should a "0-feat, both ASIs on CHA" build path be added? (Pure CHA maximisation — no feat utility at all, both ASI slots on +2 CHA.) Would reach CHA 21→20 for +2-CHA species. Currently unmodeled.
 - Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
-- Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)? Currently profiles are code-only constants.
+- ~~Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)?~~ — **Resolved in Session 015.** `SavedProfile` model + full CRUD at `/api/bard/profiles`. `profileId` param on benchmark/explore loads saved profile weights from DB.
 - Should `byScenario` also expose the full ranked distribution of all builds per scenario (not just the top build)? Would enable full distribution analysis but greatly increase response payload size.
 
 ---
