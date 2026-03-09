@@ -3,10 +3,11 @@
  *
  * Savras has foreseen the need for a bard — a voice to carry his truth into the world.
  * This service defines three Level 8 bard candidates, runs them through standardised
- * combat and social encounter simulations, and ranks them by composite performance score.
+ * combat, social encounter, and party support simulations, then ranks them by composite score.
  *
- * Combat weight: 50%  (survive long enough to sing the tale)
- * Social weight:  50%  (inspire, enchant, and persuade the masses)
+ * Combat weight:        40%  (survive long enough to sing the tale)
+ * Social weight:        40%  (inspire, enchant, and persuade the masses)
+ * Party support weight: 20%  (make those around you stronger)
  */
 
 // ─── Candidate Data Types ─────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ export interface CombatScenarioResult {
   losses: number;
   averageRoundsToVictory: number;
   averageDamageTaken: number;
+  averageConcentrationBreaks: number;
   survivalRate: number;
   score: number;
 }
@@ -517,14 +519,15 @@ export const BARD_CANDIDATES: BardCandidate[] = [
 
 /**
  * Simulate a single combat encounter for a candidate.
- * Returns: survival (boolean), rounds survived, damage taken.
+ * Returns: survival (boolean), rounds survived, damage taken, concentration breaks.
  */
 function simulateSingleCombat(
   candidate: BardCandidate,
   scenario: CombatScenario,
-): { survived: boolean; roundsToEnd: number; damageTaken: number } {
+): { survived: boolean; roundsToEnd: number; damageTaken: number; concentrationBreaks: number } {
   const cha = modifierFor(candidate.abilityScores.charisma);
   const dex = modifierFor(candidate.abilityScores.dexterity);
+  const con = modifierFor(candidate.abilityScores.constitution);
   const spellAttack = cha + candidate.proficiencyBonus;
   const spellSaveDC = 8 + cha + candidate.proficiencyBonus;
 
@@ -533,10 +536,12 @@ function simulateSingleCombat(
     Array.from({ length: e.count }, (_, i) => ({
       name: `${e.name} ${i + 1}`,
       hp: e.hp,
+      maxHp: e.hp,
       ac: e.ac,
       attackBonus: e.attackBonus,
       damage: e.damage,
       alive: true,
+      controlled: false,  // true = incapacitated by a concentration spell
       savingThrow: 10, // enemy WIS save modifier (flat 0 bonus vs DC)
     }))
   );
@@ -549,11 +554,14 @@ function simulateSingleCombat(
   const hasCounterspell = candidate.spells.some((s) => s.name === 'Counterspell');
   const hasMirrorImage = candidate.spells.some((s) => s.name === 'Mirror Image');
   const isValorBard = candidate.subclass === 'College of Valor';
+  const hasWarCaster = candidate.feats.some((f) => f.name === 'War Caster');
 
   let candidateHp = candidate.maxHitPoints;
   let damageTaken = 0;
   let mirrorImageCharges = hasMirrorImage ? 3 : 0;
   let controlSpellUsed = false;
+  let concentrating = false;
+  let concentrationBreaks = 0;
 
   // Cloak of Protection: +1 to saves and AC
   const hasCloakProtection = candidate.equipment.some((e) => e.name === 'Cloak of Protection');
@@ -573,7 +581,7 @@ function simulateSingleCombat(
 
   for (let round = 1; round <= scenario.rounds; round++) {
     roundsElapsed = round;
-    const aliveEnemies = enemies.filter((e) => e.alive);
+    const aliveEnemies = enemies.filter((e) => e.alive && !e.controlled);
     if (aliveEnemies.length === 0) break;
 
     // ── Candidate's turn ──────────────────────────────────────────────
@@ -581,12 +589,11 @@ function simulateSingleCombat(
     if (hasControlSpell && !controlSpellUsed && aliveEnemies.length >= 2) {
       // Hypnotic Pattern / Hold Person — enemies must make WIS save
       const savesNeeded = Math.min(aliveEnemies.length, 3);
-      let controlled = 0;
       for (let ei = 0; ei < savesNeeded; ei++) {
         const savRoll = rollDie(20);
         if (savRoll + aliveEnemies[ei].savingThrow < spellSaveDC) {
-          aliveEnemies[ei].alive = false; // Treat as incapacitated / removed from combat
-          controlled++;
+          aliveEnemies[ei].controlled = true; // Incapacitated; stays alive for later
+          concentrating = true;
         }
       }
       controlSpellUsed = true;
@@ -603,6 +610,7 @@ function simulateSingleCombat(
           target.hp -= dmg;
           if (target.hp <= 0) {
             target.alive = false;
+            target.controlled = false;
             break;
           }
         }
@@ -610,7 +618,7 @@ function simulateSingleCombat(
     }
 
     // Refresh alive enemies after candidate attacks
-    const aliveAfterTurn = enemies.filter((e) => e.alive);
+    const aliveAfterTurn = enemies.filter((e) => e.alive && !e.controlled);
     if (aliveAfterTurn.length === 0) break;
 
     // ── Enemy turns ───────────────────────────────────────────────────
@@ -634,17 +642,39 @@ function simulateSingleCombat(
         damageTaken += dmg;
         candidateHp -= dmg;
         if (candidateHp <= 0) {
-          return { survived: false, roundsToEnd: round, damageTaken };
+          return { survived: false, roundsToEnd: round, damageTaken, concentrationBreaks };
+        }
+
+        // ── Concentration check when hit while concentrating ───────────────────
+        // DC = max(10, half of damage taken). War Caster grants advantage on the save.
+        // Bards have no CON save proficiency — roll is d20 + CON modifier only.
+        if (concentrating) {
+          const conSaveDC = Math.max(10, Math.floor(dmg / 2));
+          const conRoll = hasWarCaster
+            ? Math.max(rollDie(20) + con, rollDie(20) + con)
+            : rollDie(20) + con;
+          if (conRoll < conSaveDC) {
+            concentrating = false;
+            concentrationBreaks++;
+            // Controlled enemies shake free — they rejoin combat at half their original HP
+            enemies.forEach((e) => {
+              if (e.controlled) {
+                e.controlled = false;
+                e.hp = Math.ceil(e.maxHp / 2);
+              }
+            });
+          }
         }
       }
     }
   }
 
-  const finalAlive = enemies.filter((e) => e.alive);
+  const finalAlive = enemies.filter((e) => e.alive && !e.controlled);
   return {
     survived: finalAlive.length === 0,
     roundsToEnd: roundsElapsed,
     damageTaken,
+    concentrationBreaks,
   };
 }
 
@@ -850,17 +880,20 @@ function runCombatBenchmark(candidate: BardCandidate): CombatScenarioResult[] {
     let wins = 0;
     let totalRounds = 0;
     let totalDamage = 0;
+    let totalConcentrationBreaks = 0;
 
     for (let i = 0; i < SIMULATION_ITERATIONS; i++) {
       const result = simulateSingleCombat(candidate, scenario);
       if (result.survived) wins++;
       totalRounds += result.roundsToEnd;
       totalDamage += result.damageTaken;
+      totalConcentrationBreaks += result.concentrationBreaks;
     }
 
     const survivalRate = wins / SIMULATION_ITERATIONS;
     const avgRounds = totalRounds / SIMULATION_ITERATIONS;
     const avgDamage = totalDamage / SIMULATION_ITERATIONS;
+    const avgConcentrationBreaks = totalConcentrationBreaks / SIMULATION_ITERATIONS;
 
     // Score: weighted by survival rate + speed of victory
     const speedBonus = scenario.difficulty === 'hard' ? 0 : (scenario.rounds - avgRounds) / scenario.rounds;
@@ -874,6 +907,7 @@ function runCombatBenchmark(candidate: BardCandidate): CombatScenarioResult[] {
       losses: SIMULATION_ITERATIONS - wins,
       averageRoundsToVictory: parseFloat(avgRounds.toFixed(1)),
       averageDamageTaken: parseFloat(avgDamage.toFixed(1)),
+      averageConcentrationBreaks: parseFloat(avgConcentrationBreaks.toFixed(2)),
       survivalRate: parseFloat((survivalRate * 100).toFixed(1)),
       score: Math.min(100, Math.max(0, score)),
     };

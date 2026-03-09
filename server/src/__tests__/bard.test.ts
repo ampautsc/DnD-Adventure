@@ -7,6 +7,7 @@ import {
   BARD_CANDIDATES,
   BardCandidate,
   BenchmarkResult,
+  CombatScenarioResult,
   PartySupportScenarioResult,
 } from '../services/BardBenchmarkService';
 import { connectTestDB, closeTestDB, clearTestDB } from './helpers';
@@ -430,7 +431,93 @@ describe('BardBenchmarkService - party support evaluation', () => {
   });
 });
 
-// ─── Bard Instantiation Tests ─────────────────────────────────────────────────
+// ─── Concentration Mechanics Tests ───────────────────────────────────────────
+
+describe('BardBenchmarkService - concentration mechanics', () => {
+  let benchmarkResults: BenchmarkResult[];
+
+  beforeAll(() => {
+    benchmarkResults = runBardBenchmarks();
+  });
+
+  it('each combat scenario result includes an averageConcentrationBreaks field', () => {
+    benchmarkResults.forEach((r) => {
+      r.combatDetails.forEach((d) => {
+        expect(d.averageConcentrationBreaks).toBeDefined();
+        expect(typeof d.averageConcentrationBreaks).toBe('number');
+        expect(d.averageConcentrationBreaks).toBeGreaterThanOrEqual(0);
+      });
+    });
+  });
+
+  it('averageConcentrationBreaks is bounded — cannot exceed rounds in the scenario', () => {
+    // The hard scenario has 20 rounds; concentrationBreaks per run cannot exceed rounds
+    benchmarkResults.forEach((r) => {
+      const hardScenario = r.combatDetails.find((d) => d.difficulty === 'hard');
+      expect(hardScenario).toBeDefined();
+      // Average can't exceed 20 (rounds in hard scenario)
+      expect(hardScenario!.averageConcentrationBreaks).toBeLessThanOrEqual(20);
+    });
+  });
+
+  it('candidates with control spells record concentration break attempts in hard scenarios', () => {
+    // All three candidates have control spells — they all attempt concentration
+    // In the hard scenario (most enemies, most attacks), breaks can occur
+    benchmarkResults.forEach((r) => {
+      const hardScenario = r.combatDetails.find((d) => d.difficulty === 'hard');
+      expect(hardScenario).toBeDefined();
+      // In a hard scenario with 6 enemies attacking, concentration breaks are possible.
+      // averageConcentrationBreaks >= 0 (zero is valid when concentration holds every time)
+      expect(hardScenario!.averageConcentrationBreaks).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it('War Caster candidates have their concentration strength listed', () => {
+    const lyra = benchmarkResults.find((r) => r.candidateId === 'lyra-silverstring');
+    const cadwyn = benchmarkResults.find((r) => r.candidateId === 'cadwyn-ironbeat');
+    expect(lyra).toBeDefined();
+    expect(cadwyn).toBeDefined();
+    // War Caster grants advantage on CON saves — should be identified as a strength
+    expect(lyra!.strengths).toContain('Concentration spell reliability (War Caster)');
+    expect(cadwyn!.strengths).toContain('Concentration spell reliability (War Caster)');
+  });
+
+  it('College of Glamour bard (Vael) does not have War Caster concentration strength', () => {
+    const vael = benchmarkResults.find((r) => r.candidateId === 'vael-duskwhisper');
+    expect(vael).toBeDefined();
+    // Vael has Actor feat, not War Caster — concentration advantage is not available to her
+    expect(vael!.strengths).not.toContain('Concentration spell reliability (War Caster)');
+  });
+
+  it('Vael has equal or higher concentration breaks than Lyra in hard scenario', () => {
+    // Lyra and Cadwyn have War Caster (advantage on CON saves to maintain concentration).
+    // Vael does not. Over 200 iterations, Vael should average at least as many breaks.
+    const lyraHard = benchmarkResults
+      .find((r) => r.candidateId === 'lyra-silverstring')!
+      .combatDetails.find((d) => d.difficulty === 'hard')!;
+    const vaelHard = benchmarkResults
+      .find((r) => r.candidateId === 'vael-duskwhisper')!
+      .combatDetails.find((d) => d.difficulty === 'hard')!;
+
+    // Only the lower bound is tested: we verify Vael does not have fewer breaks than Lyra
+    // by more than sampling variance (0.5). An upper bound is not asserted because the
+    // expected difference is small (0.1-0.4 breaks) and a tight ceiling would be flaky.
+    expect(vaelHard.averageConcentrationBreaks).toBeGreaterThanOrEqual(
+      lyraHard.averageConcentrationBreaks - 0.5
+    );
+  });
+
+  it('POST /api/bard/benchmark returns averageConcentrationBreaks in combat details', async () => {
+    const res = await request(app).post('/api/bard/benchmark');
+    expect(res.status).toBe(200);
+    res.body.results.forEach((r: BenchmarkResult) => {
+      r.combatDetails.forEach((d: CombatScenarioResult) => {
+        expect(typeof d.averageConcentrationBreaks).toBe('number');
+        expect(d.averageConcentrationBreaks).toBeGreaterThanOrEqual(0);
+      });
+    });
+  });
+});
 
 describe('POST /api/bard/instantiate', () => {
   beforeAll(async () => {

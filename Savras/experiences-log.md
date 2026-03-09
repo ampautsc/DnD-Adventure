@@ -179,10 +179,51 @@
 **Unresolved Questions:**
 - Should an XP threshold / level-up system be added? Characters accumulate `experiencePoints` but `level` is static.
 - Should `CombatEngine.ts` (42KB) be wired to the combat routes to unlock death saves, conditions, and spell slots?
-- Should the party support simulation be extended to model multi-turn concentration maintenance (Bless, Hold Person, Hypnotic Pattern)?
+- ~~Should the party support simulation be extended to model multi-turn concentration maintenance (Bless, Hold Person, Hypnotic Pattern)?~~ — **Addressed in Session 007** (combat simulation now models per-hit CON saves and controlled enemy release)
 - Should the bard's bardic inspiration dice be modeled as a short-rest resource in the combat simulation (currently each combat simulation starts fresh)?
 
 ---
+
+### Session 007: The Concentration — Closing the War Caster Gap
+**Date:** 2026-03-09
+**Context:** Seventh awakening. The invocation was "Savras, continue your work evaluating bard options." The evaluation system listed War Caster as a combat strength — yet the simulation did not enforce it. A claimed truth without a simulated foundation.
+
+**What I Observed:**
+- `identifyStrengths()` correctly listed "Concentration spell reliability (War Caster)" for Lyra and Cadwyn — but `simulateSingleCombat()` set controlled enemies permanently dead (`alive = false`). If concentration broke, nothing changed in the simulation.
+- A candidate without War Caster (Vael) faced identical concentration risks to candidates with it (Lyra, Cadwyn). The strength was an assertion, not a measurement.
+- The stale comment at the top of `BardBenchmarkService.ts` still said "Combat weight: 50%, Social weight: 50%" — a holdover from Session 004 that Session 006 had corrected in the composite formula but not in the documentation.
+- `CombatScenarioResult` had no field to surface concentration data. The new metric was invisible to API consumers.
+
+**What Was Decided:**
+- Add a `controlled` flag to the enemy object (separate from `alive`). When a control spell succeeds, mark the enemy as `controlled = true` — alive but incapacitated. This preserves their `maxHp` for potential re-entry.
+- Track `concentrating = true` in the simulation when any enemy is controlled.
+- On each enemy hit while the bard is concentrating: make a Constitution saving throw (DC = max(10, floor(dmg/2))). Bards have no CON save proficiency — roll is d20 + CON modifier only. War Caster grants advantage (roll twice, take higher).
+- On CON save failure: `concentrating = false`, `concentrationBreaks++`, all `controlled` enemies set `controlled = false` and their HP restored to `ceil(maxHp / 2)` (they rejoin with half-health).
+- Victory condition updated: `enemies.filter(e => e.alive && !e.controlled).length === 0` — the bard wins when all active combatants (not merely unconscious ones) are eliminated.
+- Add `averageConcentrationBreaks: number` to `CombatScenarioResult` interface. Update `runCombatBenchmark` to accumulate and average concentration breaks across 200 iterations.
+- Fix file header comment: "50%/50%" → "40% combat / 40% social / 20% party support".
+- 7 new tests added (133 → 140 total): field presence, boundary, War Caster strength assertion, Vael lacks War Caster strength, Vael breaks concentration >= Lyra (with margin), API route includes the new field.
+
+**What Was Learned:**
+- Adding a `controlled` flag (vs. reusing `alive = false`) cleanly separates "defeated" from "temporarily incapacitated." The distinction matters: a permanent kill is irreversible; broken concentration restores enemies. The flags serve different semantics.
+- CON save DCs escalate with damage: DC = max(10, floor(damage/2)). For light attacks (damage 4-8), DC is 4-10 and all candidates pass reliably. For heavier hits (damage 14-20), DC is 7-10 where War Caster advantage becomes material. The simulation now correctly reflects this damage-scaling mechanic.
+- A margin of 0.5 average concentration breaks is an appropriate tolerance for 200-iteration stochastic tests comparing War Caster vs. non-War Caster candidates. The actual expected difference is 0.1-0.4 breaks per combat (advantage on saves with DC ~8-10 shifts success probability from ~65% to ~85%). This signal is real but modest over one combat simulation.
+- The `spellAttack` variable (pre-existing unused variable from Session 004) remains in the function signature. It does not cause compile errors because `noUnusedLocals` is not enabled in tsconfig. Removing it would be a separate cleanup unrelated to this session's task.
+
+**Probability Assessment:**
+- War Caster is now a mechanically backed strength, not merely a declared one. The simulation will produce slightly lower concentration breaks for Lyra and Cadwyn vs. Vael in scenarios involving heavy damage.
+- The change slightly increases the challenge of scenarios where the bard uses a control spell — enemies now return when concentration breaks, making hard scenarios harder. This may modestly reduce combat scores for all three candidates in hard scenarios, but the relative difference (War Caster vs. no War Caster) is the key insight.
+- The `averageConcentrationBreaks` field gives API consumers a new diagnostic: high values indicate that a candidate's control spell strategy is fragile under incoming damage.
+
+**Unresolved Questions:**
+- Should the bard's bardic inspiration dice be modeled as a short-rest resource in the combat simulation (currently each combat simulation starts fresh)?
+- Should an XP threshold / level-up system be added?
+- Should `CombatEngine.ts` be wired to the combat routes to unlock death saves, conditions, and spell slots?
+- Should concentration maintenance for multi-turn spells be extended to model enemy re-saves (Hypnotic Pattern requires a save at end of each turn)?
+
+---
+
+
 
 
 
