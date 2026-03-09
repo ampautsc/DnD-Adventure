@@ -426,8 +426,9 @@ describe('BardBenchmarkService - party support evaluation', () => {
   it('composite score reflects party support weighting (40% combat + 40% social + 20% party)', () => {
     benchmarkResults.forEach((r) => {
       const expected = Math.round(r.combatScore * 0.4 + r.socialScore * 0.4 + r.partyScore * 0.2);
-      // Allow ±1 for rounding differences
-      expect(Math.abs(r.compositeScore - expected)).toBeLessThanOrEqual(1);
+      // With default weights (categoryWeights total = 1.0), computeCompositeScore
+      // produces the same result as the legacy hardcoded formula — exact equality holds.
+      expect(r.compositeScore).toBe(expected);
     });
   });
 
@@ -1182,8 +1183,11 @@ describe('BardBenchmarkService - weighted benchmark scoring', () => {
   it('default weights produce same composite as hardcoded 40/40/20 formula', () => {
     const defaultResults = runBardBenchmarks();
     defaultResults.forEach((r) => {
+      // combatScore, socialScore, partyScore are already integers; with default
+      // categoryWeights (0.4/0.4/0.2, total = 1.0) computeCompositeScore is
+      // mathematically identical to the legacy formula, so exact equality holds.
       const expected = Math.round(r.combatScore * 0.4 + r.socialScore * 0.4 + r.partyScore * 0.2);
-      expect(Math.abs(r.compositeScore - expected)).toBeLessThanOrEqual(1);
+      expect(r.compositeScore).toBe(expected);
     });
   });
 

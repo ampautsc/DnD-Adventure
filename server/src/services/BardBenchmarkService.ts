@@ -333,7 +333,7 @@ const PARTY_SUPPORT_SCENARIOS: PartySupportScenario[] = [
 
 /**
  * Default scoring weights — equal weight for every scenario, category split at
- * 40 % combat / 40 % social / 20 % party support.  These are the weights used
+ * 40% combat / 40% social / 20% party support.  These are the weights used
  * when no profile or custom weights are supplied.
  */
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
@@ -509,7 +509,9 @@ export const CAMPAIGN_PROFILES: CampaignProfile[] = [
  *
  * @param results - Array of objects with `scenarioName` and `score` (0–100).
  * @param scenarioWeights - Map from scenario name to relative weight. Scenarios
- *   not present in the map default to weight 1.0.
+ *   not present in the map default to weight 1.0 (equal contribution), which
+ *   preserves backward-compatible equal-weighting when using `DEFAULT_SCORING_WEIGHTS`.
+ *   Weight 0 effectively excludes a scenario from the calculation.
  * @returns Weighted average score in the range 0–100, rounded to the nearest
  *   integer.
  */
@@ -567,7 +569,7 @@ function computeCompositeScore(
 export function resolveWeights(
   weightsOrProfileId?: Partial<ScoringWeights> | string,
 ): ScoringWeights {
-  if (weightsOrProfileId === undefined || weightsOrProfileId === null) {
+  if (weightsOrProfileId === undefined) {
     return DEFAULT_SCORING_WEIGHTS;
   }
 
