@@ -23,51 +23,51 @@ variance. Compare patterns across multiple builds to identify systematic differe
 
 | Rank | Build ID | Composite | Combat | Social | Party |
 |------|----------|-----------|--------|--------|-------|
-| 1 | `lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | 62.0 | 42.0 | 93.0 | 42.0 |
-| 2 | `lore-eladrin__actor+cha-+2-asi__cloak-of-pro+instrument-o` | 62.0 | 37.0 | 97.0 | 40.0 |
-| 3 | `lore-tiefling-glasya__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | 61.0 | 32.0 | 100.0 | 43.0 |
-| 4 | `lore-lightfoot-halfling__actor+cha-+2-asi__hat-of-disgu+instrument-o` | 61.0 | 32.0 | 99.0 | 42.0 |
-| 5 | `lore-eladrin__actor+cha-+2-asi__hat-of-disgu+staff-of-cha` | 61.0 | 34.0 | 99.0 | 41.0 |
-| 6 | `lore-eladrin__cha-+2-asi+cha-+2-asi__+1-rapier+cloak-of-pro` | 61.0 | 42.0 | 91.0 | 41.0 |
-| 7 | `lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv` | 61.0 | 34.0 | 97.0 | 44.0 |
-| 8 | `lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | 60.0 | 32.0 | 95.0 | 44.0 |
-| 9 | `lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+boots-of-elv` | 60.0 | 30.0 | 99.0 | 43.0 |
-| 10 | `lore-half-elf-drow__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha` | 60.0 | 29.0 | 99.0 | 42.0 |
-| 11 | `lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o` | 60.0 | 30.0 | 99.0 | 40.0 |
-| 12 | `lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__hat-of-disgu+staff-of-cha` | 60.0 | 33.0 | 96.0 | 41.0 |
-| 13 | `lore-protector-aasimar__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | 60.0 | 29.0 | 100.0 | 42.0 |
-| 14 | `lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | 60.0 | 35.0 | 95.0 | 41.0 |
-| 15 | `lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+periapt-of-p` | 60.0 | 35.0 | 95.0 | 41.0 |
-| 16 | `lore-wood-elf__actor+cha-+2-asi__+1-rapier+boots-of-elv` | 60.0 | 38.0 | 92.0 | 40.0 |
-| 17 | `lore-eladrin__actor+war-caster__cloak-of-pro+instrument-o` | 60.0 | 39.0 | 93.0 | 38.0 |
-| 18 | `lore-eladrin__actor+cha-+2-asi__+1-rapier+boots-of-elv` | 60.0 | 35.0 | 95.0 | 41.0 |
-| 19 | `lore-eladrin__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha` | 60.0 | 38.0 | 91.0 | 41.0 |
-| 20 | `lore-satyr__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | 60.0 | 31.0 | 99.0 | 41.0 |
+| 1 | `lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+hat-of-disgu` | 70.0 | 54.0 | 100.0 | 42.0 |
+| 2 | `lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+staff-of-cha` | 69.0 | 52.0 | 99.0 | 42.0 |
+| 3 | `lore-half-elf-drow__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | 69.0 | 54.0 | 97.0 | 41.0 |
+| 4 | `lore-tiefling-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o` | 69.0 | 52.0 | 99.0 | 44.0 |
+| 5 | `lore-tiefling-standard__actor+cha-+2-asi__+1-rapier+boots-of-elv` | 69.0 | 53.0 | 99.0 | 41.0 |
+| 6 | `lore-tiefling-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o` | 69.0 | 56.0 | 95.0 | 41.0 |
+| 7 | `lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o` | 69.0 | 51.0 | 100.0 | 41.0 |
+| 8 | `lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu` | 69.0 | 57.0 | 96.0 | 41.0 |
+| 9 | `lore-protector-aasimar__actor+cha-+2-asi__hat-of-disgu+instrument-o` | 69.0 | 56.0 | 95.0 | 43.0 |
+| 10 | `lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | 69.0 | 57.0 | 95.0 | 39.0 |
+| 11 | `lore-eladrin__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o` | 69.0 | 55.0 | 97.0 | 42.0 |
+| 12 | `lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | 68.0 | 56.0 | 92.0 | 42.0 |
+| 13 | `lore-half-elf-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o` | 68.0 | 56.0 | 92.0 | 43.0 |
+| 14 | `lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+instrument-o` | 68.0 | 53.0 | 95.0 | 43.0 |
+| 15 | `lore-half-elf-standard__cha-+2-asi+fey-touched__cloak-of-pro+hat-of-disgu` | 68.0 | 53.0 | 95.0 | 42.0 |
+| 16 | `lore-half-elf-standard__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu` | 68.0 | 53.0 | 95.0 | 43.0 |
+| 17 | `lore-half-elf-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o` | 68.0 | 55.0 | 93.0 | 42.0 |
+| 18 | `lore-half-elf-drow__actor+war-caster__cloak-of-pro+instrument-o` | 68.0 | 53.0 | 96.0 | 40.0 |
+| 19 | `lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | 68.0 | 51.0 | 97.0 | 43.0 |
+| 20 | `lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+hat-of-disgu` | 68.0 | 55.0 | 93.0 | 43.0 |
 
 ## Log Files
 
 | Rank | Build ID | JSON | Markdown |
 |------|----------|------|----------|
-| 1 | `lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | [JSON](01-lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro.json) | [Markdown](01-lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro.md) |
-| 2 | `lore-eladrin__actor+cha-+2-asi__cloak-of-pro+instrument-o` | [JSON](02-lore-eladrin__actor+cha-+2-asi__cloak-of-pro+instrument-o.json) | [Markdown](02-lore-eladrin__actor+cha-+2-asi__cloak-of-pro+instrument-o.md) |
-| 3 | `lore-tiefling-glasya__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | [JSON](03-lore-tiefling-glasya__actor+cha-+2-asi__+1-rapier+cloak-of-pro.json) | [Markdown](03-lore-tiefling-glasya__actor+cha-+2-asi__+1-rapier+cloak-of-pro.md) |
-| 4 | `lore-lightfoot-halfling__actor+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](04-lore-lightfoot-halfling__actor+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](04-lore-lightfoot-halfling__actor+cha-+2-asi__hat-of-disgu+instrument-o.md) |
-| 5 | `lore-eladrin__actor+cha-+2-asi__hat-of-disgu+staff-of-cha` | [JSON](05-lore-eladrin__actor+cha-+2-asi__hat-of-disgu+staff-of-cha.json) | [Markdown](05-lore-eladrin__actor+cha-+2-asi__hat-of-disgu+staff-of-cha.md) |
-| 6 | `lore-eladrin__cha-+2-asi+cha-+2-asi__+1-rapier+cloak-of-pro` | [JSON](06-lore-eladrin__cha-+2-asi+cha-+2-asi__+1-rapier+cloak-of-pro.json) | [Markdown](06-lore-eladrin__cha-+2-asi+cha-+2-asi__+1-rapier+cloak-of-pro.md) |
-| 7 | `lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv` | [JSON](07-lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv.json) | [Markdown](07-lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv.md) |
-| 8 | `lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | [JSON](08-lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro.json) | [Markdown](08-lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro.md) |
-| 9 | `lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+boots-of-elv` | [JSON](09-lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+boots-of-elv.json) | [Markdown](09-lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+boots-of-elv.md) |
-| 10 | `lore-half-elf-drow__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha` | [JSON](10-lore-half-elf-drow__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha.json) | [Markdown](10-lore-half-elf-drow__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha.md) |
-| 11 | `lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](11-lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](11-lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o.md) |
-| 12 | `lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__hat-of-disgu+staff-of-cha` | [JSON](12-lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__hat-of-disgu+staff-of-cha.json) | [Markdown](12-lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__hat-of-disgu+staff-of-cha.md) |
-| 13 | `lore-protector-aasimar__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | [JSON](13-lore-protector-aasimar__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.json) | [Markdown](13-lore-protector-aasimar__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.md) |
-| 14 | `lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | [JSON](14-lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.json) | [Markdown](14-lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.md) |
-| 15 | `lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+periapt-of-p` | [JSON](15-lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+periapt-of-p.json) | [Markdown](15-lore-wood-elf__actor+cha-+2-asi__cloak-of-pro+periapt-of-p.md) |
-| 16 | `lore-wood-elf__actor+cha-+2-asi__+1-rapier+boots-of-elv` | [JSON](16-lore-wood-elf__actor+cha-+2-asi__+1-rapier+boots-of-elv.json) | [Markdown](16-lore-wood-elf__actor+cha-+2-asi__+1-rapier+boots-of-elv.md) |
-| 17 | `lore-eladrin__actor+war-caster__cloak-of-pro+instrument-o` | [JSON](17-lore-eladrin__actor+war-caster__cloak-of-pro+instrument-o.json) | [Markdown](17-lore-eladrin__actor+war-caster__cloak-of-pro+instrument-o.md) |
-| 18 | `lore-eladrin__actor+cha-+2-asi__+1-rapier+boots-of-elv` | [JSON](18-lore-eladrin__actor+cha-+2-asi__+1-rapier+boots-of-elv.json) | [Markdown](18-lore-eladrin__actor+cha-+2-asi__+1-rapier+boots-of-elv.md) |
-| 19 | `lore-eladrin__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha` | [JSON](19-lore-eladrin__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha.json) | [Markdown](19-lore-eladrin__cha-+2-asi+fey-touched__hat-of-disgu+staff-of-cha.md) |
-| 20 | `lore-satyr__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | [JSON](20-lore-satyr__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.json) | [Markdown](20-lore-satyr__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.md) |
+| 1 | `lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+hat-of-disgu` | [JSON](01-lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+hat-of-disgu.json) | [Markdown](01-lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+hat-of-disgu.md) |
+| 2 | `lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+staff-of-cha` | [JSON](02-lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+staff-of-cha.json) | [Markdown](02-lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+staff-of-cha.md) |
+| 3 | `lore-half-elf-drow__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu` | [JSON](03-lore-half-elf-drow__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.json) | [Markdown](03-lore-half-elf-drow__actor+cha-+2-asi__cloak-of-pro+hat-of-disgu.md) |
+| 4 | `lore-tiefling-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o` | [JSON](04-lore-tiefling-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o.json) | [Markdown](04-lore-tiefling-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o.md) |
+| 5 | `lore-tiefling-standard__actor+cha-+2-asi__+1-rapier+boots-of-elv` | [JSON](05-lore-tiefling-standard__actor+cha-+2-asi__+1-rapier+boots-of-elv.json) | [Markdown](05-lore-tiefling-standard__actor+cha-+2-asi__+1-rapier+boots-of-elv.md) |
+| 6 | `lore-tiefling-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](06-lore-tiefling-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](06-lore-tiefling-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o.md) |
+| 7 | `lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](07-lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](07-lore-tiefling-glasya__actor+cha-+2-asi__hat-of-disgu+instrument-o.md) |
+| 8 | `lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu` | [JSON](08-lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu.json) | [Markdown](08-lore-lightfoot-halfling__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu.md) |
+| 9 | `lore-protector-aasimar__actor+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](09-lore-protector-aasimar__actor+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](09-lore-protector-aasimar__actor+cha-+2-asi__hat-of-disgu+instrument-o.md) |
+| 10 | `lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | [JSON](10-lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro.json) | [Markdown](10-lore-eladrin__actor+cha-+2-asi__+1-rapier+cloak-of-pro.md) |
+| 11 | `lore-eladrin__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](11-lore-eladrin__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](11-lore-eladrin__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o.md) |
+| 12 | `lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | [JSON](12-lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro.json) | [Markdown](12-lore-half-elf-standard__actor+cha-+2-asi__+1-rapier+cloak-of-pro.md) |
+| 13 | `lore-half-elf-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o` | [JSON](13-lore-half-elf-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o.json) | [Markdown](13-lore-half-elf-standard__actor+cha-+2-asi__cloak-of-pro+instrument-o.md) |
+| 14 | `lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](14-lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](14-lore-half-elf-standard__actor+cha-+2-asi__hat-of-disgu+instrument-o.md) |
+| 15 | `lore-half-elf-standard__cha-+2-asi+fey-touched__cloak-of-pro+hat-of-disgu` | [JSON](15-lore-half-elf-standard__cha-+2-asi+fey-touched__cloak-of-pro+hat-of-disgu.json) | [Markdown](15-lore-half-elf-standard__cha-+2-asi+fey-touched__cloak-of-pro+hat-of-disgu.md) |
+| 16 | `lore-half-elf-standard__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu` | [JSON](16-lore-half-elf-standard__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu.json) | [Markdown](16-lore-half-elf-standard__cha-+2-asi+cha-+2-asi__+1-rapier+hat-of-disgu.md) |
+| 17 | `lore-half-elf-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o` | [JSON](17-lore-half-elf-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o.json) | [Markdown](17-lore-half-elf-standard__cha-+2-asi+cha-+2-asi__hat-of-disgu+instrument-o.md) |
+| 18 | `lore-half-elf-drow__actor+war-caster__cloak-of-pro+instrument-o` | [JSON](18-lore-half-elf-drow__actor+war-caster__cloak-of-pro+instrument-o.json) | [Markdown](18-lore-half-elf-drow__actor+war-caster__cloak-of-pro+instrument-o.md) |
+| 19 | `lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+cloak-of-pro` | [JSON](19-lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+cloak-of-pro.json) | [Markdown](19-lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+cloak-of-pro.md) |
+| 20 | `lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+hat-of-disgu` | [JSON](20-lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+hat-of-disgu.json) | [Markdown](20-lore-half-elf-drow__actor+cha-+2-asi__+1-rapier+hat-of-disgu.md) |
 
 ## Simulation Notes
 

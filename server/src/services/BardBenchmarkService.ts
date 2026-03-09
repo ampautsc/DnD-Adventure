@@ -1109,7 +1109,7 @@ function simulateSingleCombat(
       damage: e.damage,
       alive: true,
       controlled: false,  // true = incapacitated by a concentration spell
-      savingThrow: 10, // enemy WIS save modifier (flat 0 bonus vs DC)
+      savingThrow: 0, // enemy WIS save modifier: +0 (flat base, no bonus over DC)
       spellSaveDC: e.spellSaveDC,
       spellUseChance: e.spellUseChance,
     }))
@@ -1316,7 +1316,8 @@ function simulateSingleCombat(
     }
 
     // ── Candidate's turn ──────────────────────────────────────────────
-    // If Hidden Step is active, the bard refrains from attacking to maintain stealth.
+    // If Hidden Step was just activated this turn (set to true in the block above),
+    // the bard refrains from attacking to maintain stealth.
     // Use control spell in round 1 if available and not yet used
     if (hasControlSpell && !controlSpellUsed && aliveEnemies.length >= 2) {
       // Hypnotic Pattern / Hold Person — enemies must make WIS save
@@ -1345,7 +1346,7 @@ function simulateSingleCombat(
           rollTotal: saveTotal,
           dc: spellSaveDC,
           success: saved,
-          outcome: `${aliveEnemies[ei].name} WIS save: roll ${savRoll}+0=${saveTotal} vs DC ${spellSaveDC} — ${saved ? 'PASS (resists, remains active)' : `FAIL (incapacitated, under Bard's control)`}.`,
+          outcome: `${aliveEnemies[ei].name} WIS save: roll ${savRoll}+${aliveEnemies[ei].savingThrow}=${saveTotal} vs DC ${spellSaveDC} — ${saved ? 'PASS (resists, remains active)' : `FAIL (incapacitated, under Bard's control)`}.`,
         });
       }
       if (controlled > 0) {
@@ -1651,7 +1652,7 @@ function simulateSingleCombat(
           rollTotal: escapeTotal,
           dc: spellSaveDC,
           success: brokeFree,
-          outcome: `${enemy.name} (controlled) WIS save to break free: roll ${escapeRoll}+0=${escapeTotal} vs DC ${spellSaveDC} — ${brokeFree ? `PASS (breaks free at ${enemy.hp}/${enemy.maxHp} HP and rejoins combat)` : 'FAIL (remains incapacitated)'}`,
+          outcome: `${enemy.name} (controlled) WIS save to break free: roll ${escapeRoll}+${enemy.savingThrow}=${escapeTotal} vs DC ${spellSaveDC} — ${brokeFree ? `PASS (breaks free at ${enemy.hp}/${enemy.maxHp} HP and rejoins combat)` : 'FAIL (remains incapacitated)'}`,
         });
         if (brokeFree) {
           enemy.controlled = false; // broke free at current HP
