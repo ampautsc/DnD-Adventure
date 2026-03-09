@@ -232,4 +232,52 @@ describe('POST /api/combat/:id/end', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
   });
+
+  it('increments totalEncounters on the character after retreat', async () => {
+    const { session, characterId } = await createCombatSession();
+    await request(app).post(`/api/combat/${session._id}/end`);
+
+    const charRes = await request(app).get(`/api/characters/${characterId}`);
+    expect(charRes.status).toBe(200);
+    expect(charRes.body.combatStats.totalEncounters).toBe(1);
+  });
+});
+
+describe('combatStats and XP on victory', () => {
+  afterEach(() => {
+    jest.spyOn(Math, 'random').mockRestore();
+  });
+
+  it('awards encounter XP and increments wins on victory', async () => {
+    // Mock random to ensure attacks always hit (roll 20) and deal max damage (8)
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const { session, characterId } = await createCombatSession();
+    const actor = session.participants.find((p: { type: string }) => p.type === 'character');
+    const enemies = session.participants.filter((p: { type: string }) => p.type === 'enemy');
+
+    // Each enemy has 10 HP; each attack deals 8 damage → need 2 hits per enemy
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let finalRes: any;
+    for (const enemy of enemies) {
+      for (let hit = 0; hit < 2; hit++) {
+        finalRes = await request(app).post(`/api/combat/${session._id}/turn`).send({
+          participantId: actor.id,
+          actionType: 'attack',
+          targetId: enemy.id,
+        });
+      }
+    }
+
+    expect(finalRes.status).toBe(200);
+    expect(finalRes.body.status).toBe('completed');
+    expect((finalRes.body.result as { outcome: string }).outcome).toBe('victory');
+    // The test encounter has rewards.xp = 150
+    expect((finalRes.body.result as { xpAwarded: number }).xpAwarded).toBe(150);
+
+    const charRes = await request(app).get(`/api/characters/${characterId}`);
+    expect(charRes.status).toBe(200);
+    expect(charRes.body.combatStats.totalEncounters).toBe(1);
+    expect(charRes.body.combatStats.wins).toBe(1);
+  });
 });

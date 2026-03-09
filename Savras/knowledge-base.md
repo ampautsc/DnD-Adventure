@@ -111,27 +111,45 @@ The system is being built to serve them. The tools under construction are:
 - All combat outcomes currently award `xpAwarded: 0` — XP calculation is not yet implemented.
 - The `CombatEngine.ts` service (42KB) contains extensive combat logic but does not appear to be wired to the combat routes; routes implement their own simplified combat resolution inline.
 
-## Testing (Verified Session 002)
+## Testing (Verified Session 003)
 
-- 73 tests across 5 suites, all passing as of 2026-03-09.
-- Reference data routes do NOT require a database connection — tests for these can skip MongoDB setup.
+- 75 tests across 5 suites, all passing as of 2026-03-09 (Session 003).
+- `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12), damage=8 (10 HP enemy dies in 2 hits), character initiative > enemy initiative. Reliable for deterministic victory testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
 
 ## Known Gaps
 
-- Rate-limiting is missing from all routes — a production hardening concern flagged by CodeQL. All database-accessing routes are unprotected. Requires adding `express-rate-limit` dependency.
-- `xpAwarded` is always 0 in combat results — XP calculation logic needs implementation.
-- Character `combatStats` are not automatically updated when a combat session concludes.
+- `kills`, `damageDone`, `damageReceived`, `healingDone` in `combatStats` remain at 0 — these require per-turn tracking that the current simplified combat route does not perform. Wiring `CombatEngine.ts` to the routes would enable these.
+- Character HP is not updated after combat to reflect damage taken during the session.
+- Character XP does not persist across sessions — there is no `experiencePoints` field on the Character model. XP is reported in the combat result but not stored on the character.
+- `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline.
+
+## Rate-Limiting (Added Session 003)
+
+- `express-rate-limit` is now installed and applied to all `/api/` routes in non-test environments.
+- Configuration: 100 requests per 15-minute window, standard headers, legacy headers disabled.
+- Skipped when `process.env.NODE_ENV === 'test'` to avoid breaking the test suite.
+- Added in `src/index.ts` after `express.json()` middleware.
+
+## Combat System Details (Verified Sessions 002–003)
+
+- Combat participants use `id` (string) not `_id` (ObjectId) for actor/target identification in turn actions.
+- The `POST /api/combat/:id/turn` route handles: `attack`, `spell`, `heal`, `dodge`, `disengage`, `dash`, and generic actions.
+- Combat auto-resolves when all enemies or all characters are eliminated.
+- On **victory**: `xpAwarded` is fetched from `encounter.rewards.xp` (was always 0 before Session 003).
+- On **victory**: surviving characters' `combatStats.wins` and all characters' `combatStats.totalEncounters` are incremented.
+- On **defeat**: dead characters' `combatStats.losses` and all characters' `combatStats.totalEncounters` are incremented.
+- On **retreat** (POST `/end`): all characters' `combatStats.totalEncounters` are incremented.
 
 ## Open Questions and Unresolved Observations
 
 *Truths not yet fully known. These are probabilities, not facts.*
 
-- Should rate-limiting middleware be added across all routes?
-- What is the intended XP calculation logic for combat outcomes?
-- Should combat victories automatically update character `combatStats` in the database?
-- Is `CombatEngine.ts` intended to replace the inline combat logic in `routes/combat.ts`?
+- Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
+- Should an `experiencePoints` field be added to the Character model so XP accumulates across sessions?
+- Should character HP be updated after combat to reflect damage taken during the session?
+- What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
 - How many heroes are expected to use this system, and what are their skill levels?
 
 ---

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
 
 import characterRoutes from './routes/characters';
 import encounterRoutes from './routes/encounters';
@@ -19,6 +20,18 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dnd-ad
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Rate-limiting: protect all API routes in non-test environments
+if (process.env.NODE_ENV !== 'test') {
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' },
+  });
+  app.use('/api/', apiLimiter);
+}
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
