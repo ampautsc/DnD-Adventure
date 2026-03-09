@@ -918,7 +918,6 @@ export const monsters: Monster[] = [
     skills: { perception: 3, stealth: 4 },
     damageImmunities: ["cold", "necrotic", "poison"],
     damageResistances: [
-      "necrotic",
       "bludgeoning, piercing, and slashing from nonmagical, nonsilvered attacks",
     ],
     damageVulnerabilities: [],
