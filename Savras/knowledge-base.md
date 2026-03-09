@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–016)
+## Testing (Verified Sessions 002–017)
 
-- 310 tests across 6 suites, all passing as of Session 016.
+- 320 tests across 6 suites, all passing as of Session 017.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - `newObjectId()` helper in `bard.test.ts` (above the profiles test section) generates a valid MongoDB ObjectId string that does not exist in the DB.
@@ -131,7 +131,7 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 016)
+## Known Gaps (as of Session 017)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
@@ -142,8 +142,10 @@ The system is being built to serve them. The tools under construction are:
 - ~~Custom saved profiles in MongoDB has not been implemented~~ — **Resolved in Session 015.** `SavedProfile` Mongoose model + 5 CRUD routes. See API Endpoints table.
 - ~~No "0-feat, both ASIs on CHA" build path~~ — **Resolved in Session 014.** `['CHA +2 ASI', 'CHA +2 ASI']` added as 22nd FEAT_PAIR. Build matrix: 1976 builds. Double-ASI builds have no feat utility but reach CHA 20 on +2-CHA species (DC 16).
 - ~~Profile usage analytics not tracked~~ — **Resolved in Session 016.** `usageCount` (default 0) and `lastUsedAt` (default null) added to `SavedProfile`. Incremented via fire-and-forget `$inc`/`$set` when `profileId` resolves in `/benchmark` or `/explore`. Exposed in all profile responses.
+- ~~`byScenario` only exposes the top build per scenario, not the full ranked distribution~~ — **Resolved in Session 017.** `GET /api/bard/explore?includeScenarioRankings=true` adds `rankedBuilds` (lightweight array: rank/buildId/compositeScore/scenarioScore, sorted by scenarioScore desc) to every `byScenario` entry. Opt-in to keep the default response lean.
 - Social simulation does not model Suggestion/Charm Person's ongoing WIS save requirement (save each round to break the charm). Currently a binary success/failure per encounter.
 - Built-in profiles (code constants) have no usage tracking — only custom (DB) profiles track `usageCount`.
+- Should a campaign profile expose usage analytics across all time or allow resetting the counter? Currently resets only via deletion and recreation.
 
 ## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
 
@@ -199,7 +201,7 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
 | POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
-| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed` and `scenarioFilter` (null when absent) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided), `scenarioScores` per build |
+| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...&includeScenarioRankings=true`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed`, `scenarioFilter` (null when absent), and `includeScenarioRankings` (true/false) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided; optionally with `rankedBuilds` per scenario if `includeScenarioRankings=true`), `scenarioScores` per build |
 | GET | `/api/bard/scoring-profiles` | Returns all 5 built-in campaign profiles with full weight configurations |
 | GET | `/api/bard/profiles` | Returns all profiles: 5 built-in (`isBuiltIn: true`) + any saved custom (`isBuiltIn: false`); custom profiles include `usageCount` and `lastUsedAt` |
 | POST | `/api/bard/profiles` | Saves a new custom profile to MongoDB; requires `name` (string) and `weights.categoryWeights` (combat/social/partySupport ≥0, not all zero); returns profile with `usageCount: 0`, `lastUsedAt: null` |
@@ -207,15 +209,23 @@ All three simulation functions accept optional weights:
 | PUT | `/api/bard/profiles/:id` | Updates name, description, or weights of a saved custom profile; returns 400 for built-in profiles |
 | DELETE | `/api/bard/profiles/:id` | Deletes a saved custom profile; returns 400 for built-in profiles |
 
-### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–014)
+### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–017)
 
 **Build Matrix:**
 - 11 non-VH species × 22 feat pairs × 8 magic item pairs + 1 VH × 5 feat triples × 8 = **1976 builds** (Session 014)
 - Default iterations: 25 per scenario → ~1976 builds evaluated in ~3s
 - Max iterations cap for exploration route: **50** (reduced from 200 in Session 009 due to larger matrix)
 - `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
-- `runLoreBardExploration(iterations, topN, weights?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied; each `BardBuildResult` includes `scenarioScores: Record<string, number>` (per-scenario scores for all 10 scenarios)
+- `runLoreBardExploration(iterations, topN, weights?, includeScenarioRankings?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied; each `BardBuildResult` includes `scenarioScores: Record<string, number>` (per-scenario scores for all 10 scenarios); when `includeScenarioRankings=true`, each `byScenario` entry also contains `rankedBuilds`
 - `getLoreBardSpeciesPool()`, `getLoreBardFeatPool()`, `getLoreBardMagicItemPool()` — pool accessors
+
+**byScenario rankedBuilds (Added Session 017):**
+- Opt-in via `?includeScenarioRankings=true` in the route or 4th parameter to `runLoreBardExploration`
+- Each `byScenario` entry gains `rankedBuilds: Array<{ rank: number; buildId: string; compositeScore: number; scenarioScore: number }>`
+- Sorted by scenarioScore descending; ties broken by compositeScore descending
+- Length equals `totalBuildsEvaluated` (all builds ranked, not just topN)
+- `rankedBuilds[0].scenarioScore === topScore` invariant holds
+- Omitted by default (default response stays lean); `summary.includeScenarioRankings` boolean always present
 
 **Base Stat Block (27-point buy, before species/feat bonuses):**
 STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
@@ -325,7 +335,7 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
 - ~~Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)?~~ — **Resolved in Session 015.** `SavedProfile` model + full CRUD at `/api/bard/profiles`. `profileId` param on benchmark/explore loads saved profile weights from DB.
 - ~~Should saved profiles include usage metadata (how many benchmark/explore runs have used each profile)?~~ — **Resolved in Session 016.** `usageCount` (Number, default 0) and `lastUsedAt` (Date, default null) added to `SavedProfile`. Incremented on every successful `profileId` resolution in `/benchmark` and `/explore`.
-- Should `byScenario` also expose the full ranked distribution of all builds per scenario (not just the top build)? Would enable full distribution analysis but greatly increase response payload size.
+- ~~Should `byScenario` also expose the full ranked distribution of all builds per scenario (not just the top build)?~~ — **Resolved in Session 017.** `?includeScenarioRankings=true` adds `rankedBuilds` to every `byScenario` entry. Lightweight objects (rank/buildId/compositeScore/scenarioScore). Opt-in. All 10 scenarios covered. Works with `scenarioFilter`.
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
 

@@ -1791,6 +1791,13 @@ export interface BardExplorationResult {
    * High variance (topScore − bottomScore) in a scenario indicates it is a strong
    * differentiator — builds meaningfully specialise or struggle there.
    * Low variance suggests the scenario measures something all builds handle similarly.
+   *
+   * When `includeScenarioRankings` is passed to `runLoreBardExploration`, each entry
+   * also contains a `rankedBuilds` array — a lightweight ranking of every evaluated
+   * build by that scenario's score (descending). Each element contains the build's
+   * `rank`, `buildId`, `compositeScore`, and `scenarioScore` for this specific scenario.
+   * This enables full distribution analysis (e.g. "which builds score >80 here?")
+   * without repeating the full build objects.
    */
   byScenario: Record<string, {
     scenarioCategory: 'combat' | 'social' | 'partySupport';
@@ -1798,6 +1805,11 @@ export interface BardExplorationResult {
     averageScore: number;
     topScore: number;
     bottomScore: number;
+    /**
+     * Present only when `includeScenarioRankings` is true in `runLoreBardExploration`.
+     * Full ranked list of all builds by this scenario's score (descending).
+     */
+    rankedBuilds?: Array<{ rank: number; buildId: string; compositeScore: number; scenarioScore: number }>;
   }>;
 }
 
@@ -2340,11 +2352,15 @@ export function generateLoreBardBuilds(): BardCandidate[] {
  * @param topN - Cap the returned ranked list to the N best builds (default 50, 0 = all).
  * @param weights - Optional scoring weights or campaign profile ID.
  *   Omit to use `DEFAULT_SCORING_WEIGHTS` (equal scenario weights, 40/40/20 categories).
+ * @param includeScenarioRankings - When true, each `byScenario` entry includes a
+ *   `rankedBuilds` array listing every build ranked by that scenario's score (descending).
+ *   Useful for full distribution analysis. Omit or set false to keep the response lean.
  */
 export function runLoreBardExploration(
   iterationsPerScenario = 25,
   topN = 50,
   weights?: Partial<ScoringWeights> | string,
+  includeScenarioRankings = false,
 ): BardExplorationResult {
   const resolvedWeights = resolveWeights(weights);
   const builds = generateLoreBardBuilds();
@@ -2495,7 +2511,29 @@ export function runLoreBardExploration(
             : best,
         allBuilds[0],
       );
-      byScenario[scenarioName] = { scenarioCategory: category, topBuild, averageScore, topScore, bottomScore };
+
+      const entry: BardExplorationResult['byScenario'][string] = {
+        scenarioCategory: category, topBuild, averageScore, topScore, bottomScore,
+      };
+
+      if (includeScenarioRankings) {
+        // Build a lightweight ranked list sorted by this scenario's score (descending).
+        // Ties are broken by compositeScore descending so the ranking is stable.
+        const sorted = allBuilds
+          .slice()
+          .sort((a, b) => {
+            const diff = (b.scenarioScores[scenarioName] ?? 0) - (a.scenarioScores[scenarioName] ?? 0);
+            return diff !== 0 ? diff : b.compositeScore - a.compositeScore;
+          });
+        entry.rankedBuilds = sorted.map((r, i) => ({
+          rank: i + 1,
+          buildId: r.buildId,
+          compositeScore: r.compositeScore,
+          scenarioScore: r.scenarioScores[scenarioName] ?? 0,
+        }));
+      }
+
+      byScenario[scenarioName] = entry;
     }
   }
 
