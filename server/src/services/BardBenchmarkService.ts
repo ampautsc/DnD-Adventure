@@ -1696,6 +1696,12 @@ export interface BardBuildResult {
   strengths: string[];
   weaknesses: string[];
   assessment: string;
+  /**
+   * Individual scenario scores (0–100) that were aggregated to produce the
+   * category-level `combatScore`, `socialScore`, and `partySupportScore`.
+   * Keys are scenario names (e.g. "Bandit Ambush", "Infiltrate the Noble Gala").
+   */
+  scenarioScores: Record<string, number>;
 }
 
 /**
@@ -1714,6 +1720,24 @@ export interface BardExplorationResult {
   bySpecies: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
   byFeatCombination: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
   byMagicItems: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
+  /**
+   * Per-scenario analytics across all evaluated builds.
+   *
+   * Each key is a scenario name (e.g. "Bandit Ambush", "Infiltrate the Noble Gala").
+   * Each entry reports the scenario's category, the highest-scoring build, the
+   * average score of all builds, and the spread between the top and bottom scores.
+   *
+   * High variance (topScore − bottomScore) in a scenario indicates it is a strong
+   * differentiator — builds meaningfully specialise or struggle there.
+   * Low variance suggests the scenario measures something all builds handle similarly.
+   */
+  byScenario: Record<string, {
+    scenarioCategory: 'combat' | 'social' | 'partySupport';
+    topBuild: BardBuildResult;
+    averageScore: number;
+    topScore: number;
+    bottomScore: number;
+  }>;
 }
 
 // ─── Species Pool ──────────────────────────────────────────────────────────────
@@ -2305,6 +2329,11 @@ export function runLoreBardExploration(
       strengths,
       weaknesses,
       assessment,
+      scenarioScores: {
+        ...Object.fromEntries(combatResults.map((r) => [r.scenarioName, r.score])),
+        ...Object.fromEntries(socialResults.map((r) => [r.scenarioName, r.score])),
+        ...Object.fromEntries(partyResults.map((r) => [r.scenarioName, r.score])),
+      },
     } as BardBuildResult;
   });
 
@@ -2363,6 +2392,32 @@ export function runLoreBardExploration(
     byMagicItems[key].averageCompositeScore = parseFloat(avg.toFixed(1));
   }
 
+  // ── By-scenario breakdown ──────────────────────────────────────────────────
+  // Maps each scenario name to its category so we can label the entry.
+  const scenarioCategoryMap: Record<string, 'combat' | 'social' | 'partySupport'> = {};
+  for (const s of COMBAT_SCENARIOS) scenarioCategoryMap[s.name] = 'combat';
+  for (const s of SOCIAL_SCENARIOS) scenarioCategoryMap[s.name] = 'social';
+  for (const s of PARTY_SUPPORT_SCENARIOS) scenarioCategoryMap[s.name] = 'partySupport';
+
+  const byScenario: BardExplorationResult['byScenario'] = {};
+  if (allBuilds.length > 0) {
+    for (const [scenarioName, category] of Object.entries(scenarioCategoryMap)) {
+      const scores = allBuilds.map((r) => r.scenarioScores[scenarioName] ?? 0);
+      const totalScore = scores.reduce((s, n) => s + n, 0);
+      const averageScore = parseFloat((totalScore / scores.length).toFixed(1));
+      const topScore = Math.max(...scores);
+      const bottomScore = Math.min(...scores);
+      const topBuild = allBuilds.reduce(
+        (best, r) =>
+          (r.scenarioScores[scenarioName] ?? 0) > (best.scenarioScores[scenarioName] ?? 0)
+            ? r
+            : best,
+        allBuilds[0],
+      );
+      byScenario[scenarioName] = { scenarioCategory: category, topBuild, averageScore, topScore, bottomScore };
+    }
+  }
+
   return {
     summary: {
       totalBuildsEvaluated: allBuilds.length,
@@ -2375,6 +2430,7 @@ export function runLoreBardExploration(
     bySpecies,
     byFeatCombination,
     byMagicItems,
+    byScenario,
   };
 }
 

@@ -351,10 +351,13 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  *
  * Response includes:
  *   - summary: build count, iterations, fixed subclass, and scoringWeightsUsed
- *   - topBuilds: ranked array of the best N builds
+ *   - topBuilds: ranked array of the best N builds (each build includes scenarioScores)
  *   - bySpecies: best build + average score per species
  *   - byFeatCombination: best build + average score per feat combo
  *   - byMagicItems: best build + average score per item pair
+ *   - byScenario: per-scenario analytics (topBuild, averageScore, topScore, bottomScore,
+ *                 scenarioCategory) across all 10 scenarios (4 combat, 3 social, 3 party
+ *                 support). High variance in a scenario indicates strong build differentiation.
  *
  * NOTE: This is a computationally heavy endpoint. Default configuration evaluates
  * hundreds of bards in ~5-10 seconds.

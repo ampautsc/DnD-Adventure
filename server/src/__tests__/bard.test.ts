@@ -876,6 +876,9 @@ describe('BardBenchmarkService - exploration runner', () => {
       expect(b.compositeScore).toBeLessThanOrEqual(100);
       expect(b.spellSaveDC).toBeGreaterThanOrEqual(11);
       expect(b.charismaModifier).toBeGreaterThanOrEqual(2);
+      // scenarioScores must contain an entry for all 10 scenarios
+      expect(typeof b.scenarioScores).toBe('object');
+      expect(Object.keys(b.scenarioScores).length).toBe(10);
     });
   });
 
@@ -929,6 +932,100 @@ describe('BardBenchmarkService - exploration runner', () => {
       const avgPlainCHA = plainBuilds.reduce((s, b) => s + b.abilityScores.charisma, 0) / plainBuilds.length;
       expect(avgBoostedCHA).toBeGreaterThan(avgPlainCHA);
     }
+  });
+});
+
+describe('BardBenchmarkService - byScenario breakdown', () => {
+  let exploration: BardExplorationResult;
+
+  beforeAll(() => {
+    exploration = runLoreBardExploration(5, 20);
+  });
+
+  it('byScenario contains exactly 10 entries (4 combat + 3 social + 3 party support)', () => {
+    expect(Object.keys(exploration.byScenario).length).toBe(10);
+  });
+
+  it('each byScenario entry has the required shape', () => {
+    Object.entries(exploration.byScenario).forEach(([name, entry]) => {
+      expect(typeof name).toBe('string');
+      expect(['combat', 'social', 'partySupport']).toContain(entry.scenarioCategory);
+      expect(entry.topBuild).toBeDefined();
+      expect(entry.topBuild.buildId).toBeTruthy();
+      expect(typeof entry.averageScore).toBe('number');
+      expect(typeof entry.topScore).toBe('number');
+      expect(typeof entry.bottomScore).toBe('number');
+    });
+  });
+
+  it('combat scenarios are labelled as combat category', () => {
+    const combatScenarios = ['Bandit Ambush', 'Gnoll War Band', 'Undead Horde', "Warlock's Hold"];
+    combatScenarios.forEach((name) => {
+      expect(exploration.byScenario[name]).toBeDefined();
+      expect(exploration.byScenario[name].scenarioCategory).toBe('combat');
+    });
+  });
+
+  it('social scenarios are labelled as social category', () => {
+    const socialScenarios = [
+      'Convince the City Guard',
+      'Infiltrate the Noble Gala',
+      'Inspire the Downtrodden',
+    ];
+    socialScenarios.forEach((name) => {
+      expect(exploration.byScenario[name]).toBeDefined();
+      expect(exploration.byScenario[name].scenarioCategory).toBe('social');
+    });
+  });
+
+  it('party support scenarios are labelled as partySupport category', () => {
+    const partyScenarios = [
+      'The Dragon Ambush',
+      "The Road to Baldur's Gate",
+      "The Lord's Alliance Summit",
+    ];
+    partyScenarios.forEach((name) => {
+      expect(exploration.byScenario[name]).toBeDefined();
+      expect(exploration.byScenario[name].scenarioCategory).toBe('partySupport');
+    });
+  });
+
+  it('topScore is always >= averageScore >= bottomScore in every scenario', () => {
+    Object.values(exploration.byScenario).forEach((entry) => {
+      expect(entry.topScore).toBeGreaterThanOrEqual(entry.averageScore);
+      expect(entry.averageScore).toBeGreaterThanOrEqual(entry.bottomScore);
+    });
+  });
+
+  it('topBuild in each scenario has the highest or tied scenarioScore for that scenario', () => {
+    // Run a full exploration so we have all builds (not just topN)
+    const fullExploration = runLoreBardExploration(3, 0);
+    Object.entries(fullExploration.byScenario).forEach(([scenarioName, entry]) => {
+      const topBuildScore = entry.topBuild.scenarioScores[scenarioName] ?? 0;
+      expect(topBuildScore).toBe(entry.topScore);
+    });
+  });
+
+  it('all scenarioScores in topBuilds are within 0–100 range', () => {
+    exploration.topBuilds.forEach((b) => {
+      Object.values(b.scenarioScores).forEach((score) => {
+        expect(score).toBeGreaterThanOrEqual(0);
+        expect(score).toBeLessThanOrEqual(100);
+      });
+    });
+  });
+
+  it('scenarioScores sum of weights matches combatScore for top builds (approximate)', () => {
+    // combatScore is a weighted average of individual combat scenario scores.
+    // With default equal weights (1.0 each), it equals the simple average of the 4 combat scenarios.
+    exploration.topBuilds.forEach((b) => {
+      const combatNames = ['Bandit Ambush', 'Gnoll War Band', 'Undead Horde', "Warlock's Hold"];
+      const manualAvg = Math.round(
+        combatNames.reduce((s, n) => s + (b.scenarioScores[n] ?? 0), 0) / combatNames.length,
+      );
+      // Allow ±1 for rounding differences between intermediate steps
+      expect(Math.abs(b.combatScore - manualAvg)).toBeLessThanOrEqual(1);
+    });
   });
 });
 
@@ -989,6 +1086,36 @@ describe('GET /api/bard/explore', () => {
     expect(res.body.bySpecies).toBeDefined();
     expect(res.body.byFeatCombination).toBeDefined();
     expect(res.body.byMagicItems).toBeDefined();
+    expect(res.body.byScenario).toBeDefined();
+  }, 30000);
+
+  it('byScenario in API response contains exactly 10 scenario entries', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5');
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.byScenario).length).toBe(10);
+  }, 30000);
+
+  it('byScenario entries have scenarioCategory, topBuild, averageScore, topScore, bottomScore', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5');
+    expect(res.status).toBe(200);
+    Object.values(res.body.byScenario as Record<string, Record<string, unknown>>).forEach((entry) => {
+      expect(['combat', 'social', 'partySupport']).toContain(entry['scenarioCategory']);
+      expect(entry['topBuild']).toBeDefined();
+      expect(typeof entry['averageScore']).toBe('number');
+      expect(typeof entry['topScore']).toBe('number');
+      expect(typeof entry['bottomScore']).toBe('number');
+      expect((entry['topScore'] as number)).toBeGreaterThanOrEqual(entry['averageScore'] as number);
+      expect((entry['averageScore'] as number)).toBeGreaterThanOrEqual(entry['bottomScore'] as number);
+    });
+  }, 30000);
+
+  it('topBuilds in API response include scenarioScores with 10 keys', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5');
+    expect(res.status).toBe(200);
+    res.body.topBuilds.forEach((b: BardBuildResult) => {
+      expect(typeof b.scenarioScores).toBe('object');
+      expect(Object.keys(b.scenarioScores).length).toBe(10);
+    });
   }, 30000);
 
   it('respects the top= query parameter', async () => {

@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–010)
+## Testing (Verified Sessions 002–011)
 
-- 240 tests across 6 suites, all passing as of Session 010.
+- 252 tests across 6 suites, all passing as of Session 011.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -191,7 +191,7 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
 | POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
-| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...`; returns `scoringWeightsUsed` in summary |
+| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...`; returns `scoringWeightsUsed` in summary, `byScenario` breakdown, `scenarioScores` per build |
 | GET | `/api/bard/scoring-profiles` | Returns all campaign profiles with full weight configurations |
 
 ### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–010)
@@ -201,7 +201,7 @@ All three simulation functions accept optional weights:
 - Default iterations: 25 per scenario → ~1920 builds evaluated in ~2s
 - Max iterations cap for exploration route: **50** (reduced from 200 in Session 009 due to larger matrix)
 - `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
-- `runLoreBardExploration(iterations, topN, weights?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied
+- `runLoreBardExploration(iterations, topN, weights?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied; each `BardBuildResult` includes `scenarioScores: Record<string, number>` (per-scenario scores for all 10 scenarios)
 - `getLoreBardSpeciesPool()`, `getLoreBardFeatPool()`, `getLoreBardMagicItemPool()` — pool accessors
 
 **Base Stat Block (27-point buy, before species/feat bonuses):**
@@ -290,6 +290,9 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 - Should a "CHA 20 with one feat" build path be added to the exploration? (Uses both ASIs for CHA rather than feats.) DC 16 vs DC 15, but only 1 feat total.
 - Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
+- Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)? Currently profiles are code-only constants.
+- Should `byScenario` also expose the full ranked list of all builds per scenario (not just the top build)? Would enable per-scenario distribution analysis but would greatly increase response payload size.
+- Should a `?scenarioFilter=combat` parameter be added to `/api/bard/explore` for category-focused analysis?
 
 ---
 

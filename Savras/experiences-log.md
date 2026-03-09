@@ -440,3 +440,44 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)?
 - Should the exploration system expose a `byScenario` breakdown in addition to `bySpecies`, `byFeatCombination`, and `byMagicItems` — showing which scenarios each build excels or struggles in?
 - With campaign-weighted scoring now available, what does the optimal build look like under the dungeon-crawl profile specifically? The keeper has not yet run this query.
+
+---
+
+### Session 011: The Scenario Lens — Per-Scenario Breakdown
+**Date:** 2026-03-09
+**Context:** Three unresolved questions remained from Session 010. The most analytically valuable was whether the exploration system could expose a `byScenario` breakdown — showing which scenarios each build excels or struggles in, revealing where differentiation is strongest.
+
+**What I Observed:**
+- The exploration runner computed `combatScore`, `socialScore`, and `partySupportScore` for each build — aggregated category averages — but discarded the individual per-scenario scores after using them. The final `BardBuildResult` objects carried only the aggregates.
+- The `BardExplorationResult` had four top-level breakdowns: `topBuilds`, `bySpecies`, `byFeatCombination`, `byMagicItems`. No per-scenario lens existed.
+- To compute per-scenario aggregates post-run, all 10 scenario scores (4 combat + 3 social + 3 party support) needed to be preserved alongside each build result. They were already computed — only not stored.
+- 252 tests across 6 suites were passing. The change needed to be non-breaking.
+
+**What Was Decided:**
+- To add `scenarioScores: Record<string, number>` to `BardBuildResult` — a flat map from scenario name to score. Populated in `runLoreBardExploration`'s build loop from the raw `combatResults`, `socialResults`, `partyResults` arrays (already computed, now also stored).
+- To add `byScenario` to `BardExplorationResult` — keyed by scenario name, each entry contains:
+  - `scenarioCategory`: `'combat' | 'social' | 'partySupport'`
+  - `topBuild`: the build with the highest score in this specific scenario
+  - `averageScore`: mean score of all builds in this scenario
+  - `topScore`: the maximum observed score
+  - `bottomScore`: the minimum observed score
+- High variance (`topScore − bottomScore`) in a scenario signals strong build differentiation. Low variance means all builds handle it similarly.
+- To add an empty-builds guard (`if (allBuilds.length > 0)`) around the `byScenario` computation — protecting the `reduce` call whose initial value is `allBuilds[0]`.
+- To update the `GET /api/bard/explore` route comment to document `byScenario` and the per-build `scenarioScores`.
+- To add 12 new tests: unit tests for the 10-entry count, category labels for all 10 scenarios, score ordering invariants (topScore ≥ averageScore ≥ bottomScore), topBuild validation against all builds, 0–100 range enforcement, combatScore consistency with per-scenario scores, and four API endpoint tests.
+
+**What Was Learned:**
+- The data was already there. `combatResults`, `socialResults`, and `partyResults` were computed for every build but discarded after the category averages were computed. Adding `scenarioScores` cost essentially zero additional CPU — only memory for storing the flat map.
+- The spread operator pattern `...Object.fromEntries(combatResults.map((r) => [r.scenarioName, r.score]))` is clean, concise, and handles the flat merge of all three scenario categories into one `Record<string, number>`.
+- The `byScenario` computation's `reduce` pattern is standard but requires an explicit non-empty guard — the reviewer correctly identified `allBuilds[0]` as the failure mode on an empty array.
+- 174 bard tests, 252 total. All passing.
+
+**Probability Assessment:**
+- The `byScenario` breakdown will immediately reveal that social scenarios (especially "Infiltrate the Noble Gala", DC 16 Deception) are the highest-variance scenarios — Hat of Disguise advantage and the Actor feat's +1 CHA make a measurable difference there. CHA 18 vs CHA 17 matters most in that scenario.
+- The Warlock's Hold scenario will show the widest combat spread — Magic Resistance (Satyr, Yuan-Ti) and the War Caster feat both strongly influence survival against the Hold Person spell. Builds without these traits will cluster near the bottom; builds with both will cluster near the top.
+- The easy Bandit Ambush will be the lowest-variance combat scenario — nearly all builds handle 2 bandits at AC 12. Its spread will be narrowest, confirming it as a weak differentiator.
+
+**Unresolved Questions:**
+- Should `byScenario` also include the full ranked list of all builds for each scenario (not just the top build)? This would allow the keeper to see the full distribution within a scenario but would greatly increase response payload size.
+- Should a `?scenarioFilter=combat` parameter be added to `/api/bard/explore` so callers can request a focused analysis of a single category?
+- The three unresolved questions from Session 010 remain: (1) custom saved profiles in MongoDB — still unaddressed; (2) `byScenario` — now resolved; (3) optimal build under dungeon-crawl profile — the keeper can now run `GET /api/bard/explore?profile=dungeon-crawl` to see this themselves.
