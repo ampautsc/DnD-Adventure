@@ -4,6 +4,11 @@ import {
   runBardBenchmarks,
   getTopBardRecommendation,
   BardCandidate,
+  getLoreBardSpeciesPool,
+  getLoreBardFeatPool,
+  getLoreBardMagicItemPool,
+  generateLoreBardBuilds,
+  runLoreBardExploration,
 } from '../services/BardBenchmarkService';
 import { Character } from '../models/Character';
 
@@ -204,6 +209,106 @@ router.post('/instantiate', async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({
       error: 'Failed to instantiate bard candidate',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * GET /api/bard/explore/pools
+ *
+ * Returns the full species, feat, and magic item pools available for the
+ * College of Lore bard exploration system, along with counts of the
+ * build combinations that will be generated.
+ *
+ * Use this endpoint to understand the option space before running /explore.
+ */
+router.get('/explore/pools', (_req: Request, res: Response) => {
+  try {
+    const speciesPool = getLoreBardSpeciesPool();
+    const featPool = getLoreBardFeatPool();
+    const itemPool = getLoreBardMagicItemPool();
+    const totalBuilds = generateLoreBardBuilds().length;
+
+    res.json({
+      subclassFixed: 'College of Lore',
+      level: 8,
+      totalBuildsInMatrix: totalBuilds,
+      pools: {
+        species: {
+          count: speciesPool.length,
+          options: speciesPool.map((s) => ({
+            id: s.id,
+            species: s.species,
+            subspecies: s.subspecies,
+            abilityBonuses: s.abilityBonuses,
+            speed: s.speed,
+            extraFeatSlot: s.extraFeatSlot,
+            specialTraits: s.specialTraits,
+          })),
+        },
+        feats: {
+          count: featPool.length,
+          options: featPool.map((f) => ({
+            name: f.name,
+            description: f.description,
+            abilityBonus: f.abilityBonus ?? null,
+          })),
+        },
+        magicItems: {
+          count: itemPool.length,
+          options: itemPool.map((i) => ({
+            name: i.name,
+            type: i.type,
+            rarity: i.rarity,
+            properties: i.properties,
+          })),
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to retrieve exploration pools',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * GET /api/bard/explore
+ *
+ * Runs the College of Lore bard exploration engine across all generated builds
+ * (species × feat combinations × magic item pairs) and returns ranked results.
+ *
+ * Query parameters:
+ *   - top      (number, default 50): How many top builds to include in the ranked list.
+ *              Set to 0 to return all builds.
+ *   - iterations (number, default 25, max 200): Simulation iterations per scenario.
+ *              Higher = more accurate but slower. 25 gives directional results in ~5s;
+ *              200 matches the full benchmark accuracy (takes ~30s).
+ *
+ * Response includes:
+ *   - summary: build count, iterations, fixed subclass
+ *   - topBuilds: ranked array of the best N builds
+ *   - bySpecies: best build + average score per species
+ *   - byFeatCombination: best build + average score per feat combo
+ *   - byMagicItems: best build + average score per item pair
+ *
+ * NOTE: This is a computationally heavy endpoint. Default configuration evaluates
+ * hundreds of bards in ~5-10 seconds.
+ */
+router.get('/explore', (req: Request, res: Response) => {
+  try {
+    const rawTop = parseInt(String(req.query['top'] ?? '50'), 10);
+    const rawIter = parseInt(String(req.query['iterations'] ?? '25'), 10);
+    const topN = isNaN(rawTop) || rawTop < 0 ? 50 : rawTop;
+    const iterations = isNaN(rawIter) || rawIter < 1 ? 25 : Math.min(rawIter, 200);
+
+    const result = runLoreBardExploration(iterations, topN);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to run bard exploration',
       details: (err as Error).message,
     });
   }
