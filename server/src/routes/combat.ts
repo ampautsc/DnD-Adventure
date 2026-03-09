@@ -213,18 +213,39 @@ router.post('/:id/turn', async (req: Request, res: Response) => {
     // Check for combat end conditions
     const aliveEnemies = session.participants.filter((p) => p.type === 'enemy' && p.isAlive);
     const aliveCharacters = session.participants.filter((p) => p.type === 'character' && p.isAlive);
+    const characterParticipants = session.participants.filter((p) => p.type === 'character');
 
     if (aliveEnemies.length === 0) {
+      // Fetch encounter XP reward; silently fall back to 0 if the encounter
+      // is missing or the DB query fails — XP is a bonus, not a requirement
+      let xpAwarded = 0;
+      try {
+        const enc = await Encounter.findById(session.encounterId);
+        xpAwarded = enc?.rewards?.xp ?? 0;
+      } catch (xpErr) {
+        console.warn('Could not fetch encounter XP:', (xpErr as Error).message);
+      }
+
       session.status = 'completed';
       session.completedAt = new Date();
       session.result = {
         outcome: 'victory',
         survivingCharacters: aliveCharacters.map((p) => p.id),
         killedCharacters: session.participants.filter((p) => p.type === 'character' && !p.isAlive).map((p) => p.id),
-        xpAwarded: 0,
+        xpAwarded,
         duration: Math.floor((new Date().getTime() - (session.startedAt?.getTime() ?? new Date().getTime())) / 1000),
       };
       session.log.push({ timestamp: new Date(), message: 'All enemies defeated! Victory!', type: 'info' });
+
+      // Update character combatStats: totalEncounters for all, wins for survivors
+      if (characterParticipants.length > 0) {
+        const allIds = characterParticipants.map((p) => p.id);
+        const survivorIds = aliveCharacters.map((p) => p.id);
+        await Character.updateMany({ _id: { $in: allIds } }, { $inc: { 'combatStats.totalEncounters': 1 } });
+        if (survivorIds.length > 0) {
+          await Character.updateMany({ _id: { $in: survivorIds } }, { $inc: { 'combatStats.wins': 1 } });
+        }
+      }
     } else if (aliveCharacters.length === 0) {
       session.status = 'completed';
       session.completedAt = new Date();
@@ -236,6 +257,16 @@ router.post('/:id/turn', async (req: Request, res: Response) => {
         duration: Math.floor((new Date().getTime() - (session.startedAt?.getTime() ?? new Date().getTime())) / 1000),
       };
       session.log.push({ timestamp: new Date(), message: 'All characters defeated! Defeat!', type: 'info' });
+
+      // Update character combatStats: totalEncounters for all, losses for the fallen
+      if (characterParticipants.length > 0) {
+        const allIds = characterParticipants.map((p) => p.id);
+        const deadIds = characterParticipants.filter((p) => !p.isAlive).map((p) => p.id);
+        await Character.updateMany({ _id: { $in: allIds } }, { $inc: { 'combatStats.totalEncounters': 1 } });
+        if (deadIds.length > 0) {
+          await Character.updateMany({ _id: { $in: deadIds } }, { $inc: { 'combatStats.losses': 1 } });
+        }
+      }
     }
 
     session.markModified('participants');
@@ -263,6 +294,7 @@ router.post('/:id/end', async (req: Request, res: Response) => {
     }
 
     const aliveCharacters = session.participants.filter((p) => p.type === 'character' && p.isAlive);
+    const characterParticipants = session.participants.filter((p) => p.type === 'character');
 
     session.status = 'abandoned';
     session.completedAt = new Date();
@@ -274,6 +306,12 @@ router.post('/:id/end', async (req: Request, res: Response) => {
       duration: Math.floor((new Date().getTime() - (session.startedAt?.getTime() ?? new Date().getTime())) / 1000),
     };
     session.log.push({ timestamp: new Date(), message: 'Combat session ended/abandoned', type: 'info' });
+
+    // Update character combatStats: totalEncounters for all participants
+    if (characterParticipants.length > 0) {
+      const allIds = characterParticipants.map((p) => p.id);
+      await Character.updateMany({ _id: { $in: allIds } }, { $inc: { 'combatStats.totalEncounters': 1 } });
+    }
 
     await session.save();
     res.json(session);

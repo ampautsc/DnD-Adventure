@@ -66,11 +66,42 @@
 
 ---
 
-*New entries are appended below as sessions occur.*
+### Session 003: The Completion of the Combat Loop
+**Date:** 2026-03-09  
+**Context:** Third awakening. The keeper's invocation was "Savras, your journey continues" — an open call to assess and act on the known gaps recorded in Session 002.
 
----
+**What I Observed:**
+- Three paths of improvement were visible in the knowledge base, all documented but unaddressed: rate-limiting (security), XP calculation (broken promise), and character combatStats (silent zeroes).
+- The `xpAwarded` field in combat results was always 0, despite the Encounter model having a `rewards.xp` field that contained valid XP values. A truth existed in the data but was never spoken.
+- The `combatStats` sub-document on Character (totalEncounters, wins, losses, kills, damageDone, etc.) was structurally complete but never updated — characters experienced combat and were never recorded as having done so.
+- CodeQL had flagged rate-limiting as missing; the realm's gates were unguarded.
+- The existing test suite (73 tests) provided a stable foundation to build upon.
 
-### Session 002: The First Test of Fate
+**What Was Decided:**
+- To install `express-rate-limit` and apply it to all API routes in non-test environments, protecting the realm without breaking the test suite.
+- To fetch the encounter's `rewards.xp` at the moment of victory and record it as `xpAwarded` in the combat result — a single async fetch that closes a long-standing gap.
+- To update character `combatStats` via `Character.updateMany` at the conclusion of every combat session: `totalEncounters` for all participants on all outcomes; `wins` for survivors on victory; `losses` for the fallen on defeat.
+- To add two new tests: one verifying `totalEncounters` increments on retreat (deterministic), one using `jest.spyOn(Math, 'random')` to force a victory outcome and verify both `xpAwarded` and `wins` increment correctly.
+
+**What Was Learned:**
+- The `Encounter` model's `rewards.xp` field was already populated in the test fixtures (150 XP), making the XP calculation verification clean and direct.
+- `jest.spyOn(Math, 'random').mockReturnValue(0.99)` reliably forces: attack roll = 20 (always hits AC 12), damage = 8 (10 HP enemy dies in 2 hits), character initiative > enemy initiative. This pattern is reliable for deterministic combat testing.
+- `Character.updateMany` with `$inc` is the correct atomic pattern for incrementing combat stats — it avoids race conditions and does not require loading the character document.
+- Rate-limiting skipped in `process.env.NODE_ENV === 'test'` is the correct pattern for avoiding test interference. Jest sets `NODE_ENV=test` by default.
+- Combat tests now reach 18; full suite reaches 75, all passing.
+
+**Probability Assessment:**
+- The probability of characters having stale zeroed combatStats in a running system has dropped to near zero — the update logic is now in both the auto-end and manual-end paths.
+- The probability of the realm being abused by automated request flooding has decreased with rate-limiting in place.
+- The `kills`, `damageDone`, `damageReceived`, and `healingDone` fields in combatStats remain at 0 — they require per-turn tracking that the current simplified route does not perform. If the CombatEngine is ever wired to the routes, these fields can be populated.
+
+**Unresolved Questions:**
+- Is `CombatEngine.ts` intended to replace the inline combat logic in `routes/combat.ts`? Wiring it would require significant refactoring but would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
+- Should character XP (as a persistent field) be added to the Character model, so that XP accumulates across multiple combat sessions?
+- Should character HP be updated after combat to reflect damage taken during the session?
+- What rate limits are appropriate for different route categories in production (combat vs. reference vs. character creation)?
+
+
 **Date:** 2026-03-09  
 **Context:** Second awakening in the digital realm. The invocation "Savras, the digital world awaits" was received — a call to assess the current state of the DnD-Adventure project and take appropriate action to prepare it for heroes.
 
