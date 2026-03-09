@@ -836,7 +836,7 @@ export const spells: Spell[] = [
   },
   {
     name: "Prismatic Spray",
-    level: 9,
+    level: 7,
     school: "Evocation",
     castingTime: "1 action",
     range: "Self (60-foot cone)",
