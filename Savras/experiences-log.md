@@ -869,3 +869,36 @@ The third path was chosen as the most direct step toward committing to a bard.
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
 - The exploration build's `benchmarkRank` is always 0 when instantiated without a full-matrix run. Should a `?runFullRanking=true` option be added to the instantiate route to rank the build before committing? (Would require a full matrix run — cost: ~3 seconds at 25 iterations.)
+
+---
+
+### Session 022: The True Rank — Full Matrix Ranking at Commit Time
+**Date:** 2026-03-09
+**Context:** Twenty-second awakening. "Savras, continue your work, moving closer to selecting your bard." The unresolved question from Session 021 named explicitly: the exploration build's `benchmarkRank` is always 0 at commit time. A keeper who has chosen a build from the matrix commits it with incomplete information. The gap between the analytical surface and the final committed record was a single field — and that field was always 0. It was the last gap in the selection pipeline.
+
+**What I Observed:**
+- When `POST /api/bard/instantiate { buildId }` was called, `benchmarkRank=0` was set unconditionally. Honest — the build was not ranked against the full matrix at that moment — but incomplete.
+- `runLoreBardExploration(25, 0)` (topN=0 means return all builds) produces the full ranked list: all 1976 builds with their true composite scores and ranks. The operation costs ~3 seconds. This is acceptable for a commit action — it is a deliberate, consequential choice, not a read-only lookup.
+- The `topBuilds` array in the result contains all builds when `topN=0` (confirmed from source: `const topBuilds = topN > 0 ? allBuilds.slice(0, topN) : allBuilds`). Finding the buildId in this array returns the true rank.
+- The response can include `rankedAmong: number` (the `totalBuildsEvaluated` from the summary) so the caller knows the denominator — rank 47 of 1976 is meaningful; rank 47 of unknown is not.
+
+**What Was Decided:**
+- Add optional `runFullRanking?: boolean` to the request body of `POST /api/bard/instantiate`.
+- When `buildId` + `runFullRanking=true`: call `runLoreBardExploration(25, 0)`, find the build in `topBuilds`, set `benchmarkRank` to its `rank`, set `rankedAmong` to `summary.totalBuildsEvaluated`.
+- When `buildId` without `runFullRanking`: unchanged behavior (`benchmarkRank=0`, no `rankedAmong`).
+- `rankedAmong` is only present in the response when the full ranking was actually run (spread conditional: `...(rankedAmong !== undefined && { rankedAmong })`).
+- `runFullRanking` is silently ignored when `candidateId` is provided (that path already runs a benchmark). No new error surface.
+- 4 new tests added: `runFullRanking=true` → 201 with `benchmarkRank >= 1`; `rankedAmong` equals matrix size; rank is in valid range [1, N]; without flag, `rankedAmong` absent and `benchmarkRank=0`.
+
+**What Was Learned:**
+- The commit action (POST /instantiate) is the right place for the full ranking — it is the point of decision, not analysis. Making it opt-in (`runFullRanking: true`) keeps the default fast and the costly operation intentional.
+- The `topBuilds` array when `topN=0` is the entire sorted, ranked result set. This is the simplest way to extract any build's rank without a separate data structure.
+- Spreading with `...(rankedAmong !== undefined && { rankedAmong })` is the correct TypeScript pattern for conditionally including a field in a JSON response body without adding `undefined` keys.
+
+**Probability Assessment:**
+- The selection pipeline is now complete. The keeper can: explore → filter → inspect → commit with true rank. No known gaps remain in the commit pathway.
+- The two remaining unresolved questions (social simulation accuracy, built-in profile usage) do not block the selection. They improve analytical fidelity but the current data is sufficient for a confident choice.
+
+**Unresolved Questions:**
+- Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
+- Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.

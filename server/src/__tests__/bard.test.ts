@@ -665,6 +665,46 @@ describe('POST /api/bard/instantiate', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBeTruthy();
   });
+
+  it('runFullRanking=true returns 201 with a positive benchmarkRank', async () => {
+    const buildId = generateLoreBardBuilds()[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId, runFullRanking: true });
+    expect(res.status).toBe(201);
+    expect(res.body.benchmarkRank).toBeGreaterThanOrEqual(1);
+  });
+
+  it('runFullRanking=true includes rankedAmong equal to total build matrix size', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = builds[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId, runFullRanking: true });
+    expect(res.status).toBe(201);
+    expect(typeof res.body.rankedAmong).toBe('number');
+    expect(res.body.rankedAmong).toBe(builds.length);
+  });
+
+  it('benchmarkRank is within valid range when runFullRanking=true', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = builds[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId, runFullRanking: true });
+    expect(res.body.benchmarkRank).toBeGreaterThanOrEqual(1);
+    expect(res.body.benchmarkRank).toBeLessThanOrEqual(builds.length);
+  });
+
+  it('without runFullRanking, rankedAmong is absent and benchmarkRank is 0', async () => {
+    const buildId = generateLoreBardBuilds()[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId });
+    expect(res.status).toBe(201);
+    expect(res.body.benchmarkRank).toBe(0);
+    expect(res.body.rankedAmong).toBeUndefined();
+  });
 });
 
 // ─── Lore Bard Exploration System Tests ──────────────────────────────────────
