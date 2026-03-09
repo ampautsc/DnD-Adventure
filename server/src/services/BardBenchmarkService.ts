@@ -2620,8 +2620,8 @@ export function runSingleBuildExploration(
   const weaknesses = identifyWeaknesses(candidate, combatResults);
 
   const assessment = compositeScore >= 70
-    ? `A strong candidate. Spell save DC ${8 + cha + 3} with ${candidate.feats.map((f) => f.name).join(' + ')} ` +
-      `on ${candidate.subspecies} chassis. The paths of fate converge favourably.`
+    ? `A strong candidate. Spell save DC ${8 + cha + candidate.proficiencyBonus} with ${candidate.feats.map((f) => f.name).join(' + ')} ` +
+      `on ${candidate.subspecies} chassis. The paths of fate converge favorably.`
     : compositeScore >= 55
       ? `A viable candidate. Some paths remain suboptimal — examine the breakdown to locate the weakness.`
       : `Below-average performance. The combination of feats or magic items may not align with the ` +
