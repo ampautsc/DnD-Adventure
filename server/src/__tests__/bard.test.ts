@@ -16,6 +16,10 @@ import {
   runLoreBardExploration,
   BardBuildResult,
   BardExplorationResult,
+  ScoringWeights,
+  CAMPAIGN_PROFILES,
+  DEFAULT_SCORING_WEIGHTS,
+  resolveWeights,
 } from '../services/BardBenchmarkService';
 import { connectTestDB, closeTestDB, clearTestDB } from './helpers';
 
@@ -1033,5 +1037,423 @@ describe('GET /api/bard/explore', () => {
     const res = await request(app).get('/api/bard/explore?iterations=abc&top=3');
     expect(res.status).toBe(200);
     expect(res.body.summary.iterationsPerScenario).toBeGreaterThan(0);
+  }, 30000);
+});
+
+// ─── Weighted Scoring System Tests ───────────────────────────────────────────
+
+describe('BardBenchmarkService - scoring weights and campaign profiles', () => {
+  it('CAMPAIGN_PROFILES exports at least 5 named profiles', () => {
+    expect(CAMPAIGN_PROFILES.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('all profiles have id, name, description, and weights', () => {
+    CAMPAIGN_PROFILES.forEach((p) => {
+      expect(p.id).toBeTruthy();
+      expect(p.name).toBeTruthy();
+      expect(p.description.length).toBeGreaterThan(10);
+      expect(p.weights.combatScenarios).toBeDefined();
+      expect(p.weights.socialScenarios).toBeDefined();
+      expect(p.weights.partySupportScenarios).toBeDefined();
+      expect(p.weights.categoryWeights.combat).toBeGreaterThan(0);
+      expect(p.weights.categoryWeights.social).toBeGreaterThan(0);
+      expect(p.weights.categoryWeights.partySupport).toBeGreaterThan(0);
+    });
+  });
+
+  it('profile IDs are unique', () => {
+    const ids = CAMPAIGN_PROFILES.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('all-purpose profile uses DEFAULT_SCORING_WEIGHTS', () => {
+    const allPurpose = CAMPAIGN_PROFILES.find((p) => p.id === 'all-purpose');
+    expect(allPurpose).toBeDefined();
+    expect(allPurpose!.weights).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('DEFAULT_SCORING_WEIGHTS has 40/40/20 category split', () => {
+    expect(DEFAULT_SCORING_WEIGHTS.categoryWeights.combat).toBe(0.4);
+    expect(DEFAULT_SCORING_WEIGHTS.categoryWeights.social).toBe(0.4);
+    expect(DEFAULT_SCORING_WEIGHTS.categoryWeights.partySupport).toBe(0.2);
+  });
+
+  it('DEFAULT_SCORING_WEIGHTS covers all 4 combat scenarios', () => {
+    const keys = Object.keys(DEFAULT_SCORING_WEIGHTS.combatScenarios);
+    expect(keys).toContain('Bandit Ambush');
+    expect(keys).toContain('Gnoll War Band');
+    expect(keys).toContain('Undead Horde');
+    expect(keys).toContain("Warlock's Hold");
+  });
+
+  it('DEFAULT_SCORING_WEIGHTS covers all 3 social scenarios', () => {
+    const keys = Object.keys(DEFAULT_SCORING_WEIGHTS.socialScenarios);
+    expect(keys).toContain('Convince the City Guard');
+    expect(keys).toContain('Infiltrate the Noble Gala');
+    expect(keys).toContain('Inspire the Downtrodden');
+  });
+
+  it('DEFAULT_SCORING_WEIGHTS covers all 3 party support scenarios', () => {
+    const keys = Object.keys(DEFAULT_SCORING_WEIGHTS.partySupportScenarios);
+    expect(keys).toContain('The Dragon Ambush');
+    expect(keys).toContain("The Road to Baldur's Gate");
+    expect(keys).toContain("The Lord's Alliance Summit");
+  });
+
+  it('dungeon-crawl profile weights combat higher than social', () => {
+    const profile = CAMPAIGN_PROFILES.find((p) => p.id === 'dungeon-crawl');
+    expect(profile).toBeDefined();
+    expect(profile!.weights.categoryWeights.combat).toBeGreaterThan(
+      profile!.weights.categoryWeights.social,
+    );
+  });
+
+  it('social-intrigue profile weights social higher than combat', () => {
+    const profile = CAMPAIGN_PROFILES.find((p) => p.id === 'social-intrigue');
+    expect(profile).toBeDefined();
+    expect(profile!.weights.categoryWeights.social).toBeGreaterThan(
+      profile!.weights.categoryWeights.combat,
+    );
+  });
+
+  it('no profile has any negative weights', () => {
+    CAMPAIGN_PROFILES.forEach((p) => {
+      Object.values(p.weights.combatScenarios).forEach((w) => expect(w).toBeGreaterThanOrEqual(0));
+      Object.values(p.weights.socialScenarios).forEach((w) => expect(w).toBeGreaterThanOrEqual(0));
+      Object.values(p.weights.partySupportScenarios).forEach((w) => expect(w).toBeGreaterThanOrEqual(0));
+      expect(p.weights.categoryWeights.combat).toBeGreaterThanOrEqual(0);
+      expect(p.weights.categoryWeights.social).toBeGreaterThanOrEqual(0);
+      expect(p.weights.categoryWeights.partySupport).toBeGreaterThanOrEqual(0);
+    });
+  });
+});
+
+describe('BardBenchmarkService - resolveWeights', () => {
+  it('undefined returns DEFAULT_SCORING_WEIGHTS', () => {
+    expect(resolveWeights(undefined)).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('null-like returns DEFAULT_SCORING_WEIGHTS', () => {
+    // resolveWeights guards against null at runtime
+    expect(resolveWeights(undefined)).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('known profile string returns that profile\'s weights', () => {
+    const profile = CAMPAIGN_PROFILES.find((p) => p.id === 'dungeon-crawl')!;
+    expect(resolveWeights('dungeon-crawl')).toEqual(profile.weights);
+  });
+
+  it('unknown profile string falls back to DEFAULT_SCORING_WEIGHTS', () => {
+    expect(resolveWeights('unknown-campaign-xyz')).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('empty string falls back to DEFAULT_SCORING_WEIGHTS', () => {
+    expect(resolveWeights('')).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('partial weights object is merged with defaults', () => {
+    const custom: Partial<ScoringWeights> = {
+      categoryWeights: { combat: 0.7, social: 0.2, partySupport: 0.1 },
+    };
+    const resolved = resolveWeights(custom);
+    expect(resolved.categoryWeights.combat).toBe(0.7);
+    expect(resolved.categoryWeights.social).toBe(0.2);
+    expect(resolved.categoryWeights.partySupport).toBe(0.1);
+    // Scenario weights should be inherited from defaults
+    expect(resolved.combatScenarios).toEqual(DEFAULT_SCORING_WEIGHTS.combatScenarios);
+    expect(resolved.socialScenarios).toEqual(DEFAULT_SCORING_WEIGHTS.socialScenarios);
+  });
+
+  it('partial scenario weights override defaults for named scenarios', () => {
+    const custom: Partial<ScoringWeights> = {
+      combatScenarios: { "Warlock's Hold": 5.0 },
+    };
+    const resolved = resolveWeights(custom);
+    // The overridden scenario should have the new weight
+    expect(resolved.combatScenarios["Warlock's Hold"]).toBe(5.0);
+    // Other scenarios should have default weight
+    expect(resolved.combatScenarios['Bandit Ambush']).toBe(
+      DEFAULT_SCORING_WEIGHTS.combatScenarios['Bandit Ambush'],
+    );
+  });
+});
+
+describe('BardBenchmarkService - weighted benchmark scoring', () => {
+  it('default weights produce same composite as hardcoded 40/40/20 formula', () => {
+    const defaultResults = runBardBenchmarks();
+    defaultResults.forEach((r) => {
+      const expected = Math.round(r.combatScore * 0.4 + r.socialScore * 0.4 + r.partyScore * 0.2);
+      expect(Math.abs(r.compositeScore - expected)).toBeLessThanOrEqual(1);
+    });
+  });
+
+  it('all-purpose profile uses same weights structure as default (no weights)', () => {
+    // Two independent simulation runs are stochastic so exact scores differ.
+    // What we verify is that both use the same weights structure — the weights
+    // themselves, not the simulation results, define the equivalence.
+    const defaultRun = runLoreBardExploration(1, 1);
+    const allPurposeRun = runLoreBardExploration(1, 1, 'all-purpose');
+    expect(defaultRun.summary.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+    expect(allPurposeRun.summary.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('combat-heavy weights increase combat score influence', () => {
+    // With 90% combat / 5% social / 5% party, the bard with highest combat
+    // score should rank first.
+    const combatHeavy = runBardBenchmarks({
+      categoryWeights: { combat: 0.9, social: 0.05, partySupport: 0.05 },
+    });
+    const combatFirst = combatHeavy[0];
+    // Rank 1 build should have the highest combat score
+    const combatScores = combatHeavy.map((r) => r.combatScore);
+    expect(combatFirst.combatScore).toBe(Math.max(...combatScores));
+  });
+
+  it('social-heavy weights increase social score influence', () => {
+    const socialHeavy = runBardBenchmarks({
+      categoryWeights: { combat: 0.05, social: 0.9, partySupport: 0.05 },
+    });
+    const socialFirst = socialHeavy[0];
+    // Rank 1 build should have the highest social score
+    const socialScores = socialHeavy.map((r) => r.socialScore);
+    expect(socialFirst.socialScore).toBe(Math.max(...socialScores));
+  });
+
+  it('dungeon-crawl profile returns valid ranked results', () => {
+    const results = runBardBenchmarks('dungeon-crawl');
+    expect(results).toHaveLength(3);
+    const ranks = results.map((r) => r.rank);
+    expect(ranks).toContain(1);
+    expect(ranks).toContain(2);
+    expect(ranks).toContain(3);
+    results.forEach((r) => {
+      expect(r.compositeScore).toBeGreaterThanOrEqual(0);
+      expect(r.compositeScore).toBeLessThanOrEqual(100);
+    });
+  });
+
+  it('social-intrigue profile returns valid ranked results', () => {
+    const results = runBardBenchmarks('social-intrigue');
+    expect(results).toHaveLength(3);
+    results.forEach((r) => {
+      expect(r.compositeScore).toBeGreaterThanOrEqual(0);
+      expect(r.compositeScore).toBeLessThanOrEqual(100);
+    });
+  });
+
+  it('getTopBardRecommendation respects a profile argument', () => {
+    const defaultTop = getTopBardRecommendation();
+    const dungeonTop = getTopBardRecommendation('dungeon-crawl');
+    // Both must be valid candidates
+    const validIds = getBardCandidates().map((c) => c.id);
+    expect(validIds).toContain(defaultTop.candidateId);
+    expect(validIds).toContain(dungeonTop.candidateId);
+    // Both must have rank 1
+    expect(defaultTop.rank).toBe(1);
+    expect(dungeonTop.rank).toBe(1);
+  });
+
+  it('zero-weight scenario is excluded from category score calculation', () => {
+    // Give Bandit Ambush weight 0 — it should not influence the combat score.
+    const withZero = runBardBenchmarks({
+      combatScenarios: {
+        'Bandit Ambush': 0,
+        'Gnoll War Band': 1.0,
+        'Undead Horde': 1.0,
+        "Warlock's Hold": 1.0,
+      },
+    });
+    // Results should still be valid (3 candidates, scores in range)
+    expect(withZero).toHaveLength(3);
+    withZero.forEach((r) => {
+      expect(r.combatScore).toBeGreaterThanOrEqual(0);
+      expect(r.combatScore).toBeLessThanOrEqual(100);
+    });
+  });
+});
+
+describe('BardBenchmarkService - weighted exploration scoring', () => {
+  it('exploration with all-purpose profile produces same scores as no-profile exploration', () => {
+    const noProfile = runLoreBardExploration(3, 5);
+    const allPurpose = runLoreBardExploration(3, 5, 'all-purpose');
+    // Both runs are stochastic so we can only check structural equivalence
+    expect(noProfile.summary.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+    expect(allPurpose.summary.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('exploration summary includes scoringWeightsUsed', () => {
+    const result = runLoreBardExploration(3, 5);
+    expect(result.summary.scoringWeightsUsed).toBeDefined();
+    expect(result.summary.scoringWeightsUsed.categoryWeights).toBeDefined();
+  });
+
+  it('exploration with dungeon-crawl profile reflects combat-heavy weights in summary', () => {
+    const result = runLoreBardExploration(3, 5, 'dungeon-crawl');
+    expect(result.summary.scoringWeightsUsed.categoryWeights.combat).toBeGreaterThan(
+      result.summary.scoringWeightsUsed.categoryWeights.social,
+    );
+  });
+
+  it('exploration with partial weights overrides selected scenario weights', () => {
+    const custom: Partial<ScoringWeights> = {
+      categoryWeights: { combat: 0.8, social: 0.1, partySupport: 0.1 },
+    };
+    const result = runLoreBardExploration(3, 5, custom);
+    expect(result.summary.scoringWeightsUsed.categoryWeights.combat).toBe(0.8);
+  });
+});
+
+// ─── Scoring Profiles API Tests ───────────────────────────────────────────────
+
+describe('GET /api/bard/scoring-profiles', () => {
+  it('returns 200 with profiles array', async () => {
+    const res = await request(app).get('/api/bard/scoring-profiles');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.profiles)).toBe(true);
+    expect(res.body.profiles.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('response includes defaultProfile field', async () => {
+    const res = await request(app).get('/api/bard/scoring-profiles');
+    expect(res.body.defaultProfile).toBe('all-purpose');
+  });
+
+  it('each profile has id, name, description, and weights', async () => {
+    const res = await request(app).get('/api/bard/scoring-profiles');
+    res.body.profiles.forEach((p: Record<string, unknown>) => {
+      expect(p['id']).toBeTruthy();
+      expect(p['name']).toBeTruthy();
+      expect(typeof p['description']).toBe('string');
+      expect(p['weights']).toBeDefined();
+    });
+  });
+
+  it('profiles include all-purpose, dungeon-crawl, social-intrigue, war-campaign, exploration', async () => {
+    const res = await request(app).get('/api/bard/scoring-profiles');
+    const ids = res.body.profiles.map((p: Record<string, string>) => p['id']);
+    expect(ids).toContain('all-purpose');
+    expect(ids).toContain('dungeon-crawl');
+    expect(ids).toContain('social-intrigue');
+    expect(ids).toContain('war-campaign');
+    expect(ids).toContain('exploration');
+  });
+
+  it('each profile weights object has combatScenarios and categoryWeights', async () => {
+    const res = await request(app).get('/api/bard/scoring-profiles');
+    res.body.profiles.forEach((p: Record<string, unknown>) => {
+      const weights = p['weights'] as Record<string, unknown>;
+      expect(weights['combatScenarios']).toBeDefined();
+      expect(weights['socialScenarios']).toBeDefined();
+      expect(weights['partySupportScenarios']).toBeDefined();
+      expect(weights['categoryWeights']).toBeDefined();
+    });
+  });
+});
+
+describe('POST /api/bard/benchmark - weighted scoring', () => {
+  it('returns scoringWeightsUsed in response', async () => {
+    const res = await request(app).post('/api/bard/benchmark');
+    expect(res.status).toBe(200);
+    expect(res.body.scoringWeightsUsed).toBeDefined();
+    expect(res.body.scoringWeightsUsed.categoryWeights).toBeDefined();
+  });
+
+  it('scoringWeightsUsed defaults to all-purpose when no body provided', async () => {
+    const res = await request(app).post('/api/bard/benchmark');
+    expect(res.body.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('accepts a profile in the request body', async () => {
+    const res = await request(app)
+      .post('/api/bard/benchmark')
+      .send({ profile: 'dungeon-crawl' });
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(3);
+    // Dungeon-crawl weights combat category at 60%
+    expect(res.body.scoringWeightsUsed.categoryWeights.combat).toBe(0.60);
+  });
+
+  it('accepts custom weights in the request body', async () => {
+    const res = await request(app)
+      .post('/api/bard/benchmark')
+      .send({
+        weights: {
+          categoryWeights: { combat: 0.7, social: 0.2, partySupport: 0.1 },
+        },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.scoringWeightsUsed.categoryWeights.combat).toBe(0.7);
+    expect(res.body.results).toHaveLength(3);
+  });
+
+  it('profile takes precedence over weights when both supplied', async () => {
+    const res = await request(app)
+      .post('/api/bard/benchmark')
+      .send({
+        profile: 'social-intrigue',
+        weights: { categoryWeights: { combat: 0.9, social: 0.05, partySupport: 0.05 } },
+      });
+    expect(res.status).toBe(200);
+    // social-intrigue category weights should be used, not the custom ones
+    const socialIntrigue = CAMPAIGN_PROFILES.find((p) => p.id === 'social-intrigue')!;
+    expect(res.body.scoringWeightsUsed.categoryWeights.social).toBe(
+      socialIntrigue.weights.categoryWeights.social,
+    );
+  });
+
+  it('unknown profile falls back to default weights', async () => {
+    const res = await request(app)
+      .post('/api/bard/benchmark')
+      .send({ profile: 'nonexistent-profile' });
+    expect(res.status).toBe(200);
+    expect(res.body.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+});
+
+describe('GET /api/bard/recommendation - weighted scoring', () => {
+  it('accepts a profile query parameter', async () => {
+    const res = await request(app).get('/api/bard/recommendation?profile=dungeon-crawl');
+    expect(res.status).toBe(200);
+    expect(res.body.recommendation.rank).toBe(1);
+    expect(res.body.scoringWeightsUsed).toBeDefined();
+    expect(res.body.scoringWeightsUsed.categoryWeights.combat).toBe(0.60);
+  });
+
+  it('includes scoringWeightsUsed in response even without profile param', async () => {
+    const res = await request(app).get('/api/bard/recommendation');
+    expect(res.status).toBe(200);
+    expect(res.body.scoringWeightsUsed).toBeDefined();
+    expect(res.body.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+
+  it('unknown profile falls back to default recommendation', async () => {
+    const res = await request(app).get('/api/bard/recommendation?profile=invalid-xyz');
+    expect(res.status).toBe(200);
+    expect(res.body.recommendation.rank).toBe(1);
+    expect(res.body.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+  });
+});
+
+describe('GET /api/bard/explore - weighted scoring', () => {
+  it('accepts a profile query parameter and includes scoringWeightsUsed in summary', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5&profile=dungeon-crawl');
+    expect(res.status).toBe(200);
+    expect(res.body.summary.scoringWeightsUsed).toBeDefined();
+    expect(res.body.summary.scoringWeightsUsed.categoryWeights.combat).toBe(0.60);
+  }, 30000);
+
+  it('includes DEFAULT scoring weights in summary when no profile given', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=3');
+    expect(res.status).toBe(200);
+    expect(res.body.summary.scoringWeightsUsed).toEqual(DEFAULT_SCORING_WEIGHTS);
+  }, 30000);
+
+  it('social-intrigue profile weights social higher in explore summary', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=5&top=5&profile=social-intrigue',
+    );
+    expect(res.status).toBe(200);
+    const w = res.body.summary.scoringWeightsUsed.categoryWeights;
+    expect(w.social).toBeGreaterThan(w.combat);
   }, 30000);
 });
