@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Router, Request, Response } from 'express';
 import {
   getBardCandidates,
@@ -15,6 +16,7 @@ import {
   runLoreBardExploration,
 } from '../services/BardBenchmarkService';
 import { Character } from '../models/Character';
+import { SavedProfile, ISavedProfile } from '../models/SavedProfile';
 
 const router = Router();
 
@@ -88,6 +90,340 @@ function spellDuration(type: string): string {
 }
 
 /**
+ * Convert a SavedProfile Mongoose document into a plain API response object.
+ * Ensures Mixed-typed scenario maps are returned as plain JS objects.
+ */
+function savedProfileToResponse(doc: ISavedProfile): Record<string, unknown> {
+  return {
+    id: String(doc._id),
+    name: doc.name,
+    description: doc.description,
+    weights: {
+      combatScenarios: (doc.weights.combatScenarios ?? {}) as Record<string, number>,
+      socialScenarios: (doc.weights.socialScenarios ?? {}) as Record<string, number>,
+      partySupportScenarios: (doc.weights.partySupportScenarios ?? {}) as Record<string, number>,
+      categoryWeights: doc.weights.categoryWeights,
+    },
+    isBuiltIn: false,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+/**
+ * Convert a SavedProfile document's weights into a fully-typed ScoringWeights object
+ * that can be passed directly to BardBenchmarkService functions.
+ *
+ * Uses doc.toObject() to convert the Mongoose document to a plain JavaScript object,
+ * ensuring that nested sub-schema values (e.g. categoryWeights) are spread correctly
+ * rather than as Mongoose subdocument references.
+ */
+function weightsFromDoc(doc: ISavedProfile): ScoringWeights {
+  const raw = doc.toObject() as {
+    weights: {
+      combatScenarios: Record<string, number>;
+      socialScenarios: Record<string, number>;
+      partySupportScenarios: Record<string, number>;
+      categoryWeights: { combat: number; social: number; partySupport: number };
+    };
+  };
+  return resolveWeights({
+    combatScenarios: raw.weights.combatScenarios ?? {},
+    socialScenarios: raw.weights.socialScenarios ?? {},
+    partySupportScenarios: raw.weights.partySupportScenarios ?? {},
+    categoryWeights: raw.weights.categoryWeights,
+  });
+}
+
+/**
+ * Validate the `weights` body field for profile creation and update.
+ * Returns an error message string if invalid, or null if valid.
+ */
+function validateWeights(weights: unknown): string | null {
+  if (!weights || typeof weights !== 'object' || Array.isArray(weights)) {
+    return 'weights must be an object';
+  }
+  const w = weights as Record<string, unknown>;
+  const cw = w['categoryWeights'];
+  if (!cw || typeof cw !== 'object' || Array.isArray(cw)) {
+    return 'weights.categoryWeights is required and must be an object';
+  }
+  const { combat, social, partySupport } = cw as Record<string, unknown>;
+  if (typeof combat !== 'number' || typeof social !== 'number' || typeof partySupport !== 'number') {
+    return 'weights.categoryWeights must have numeric combat, social, and partySupport fields';
+  }
+  if (combat < 0 || social < 0 || partySupport < 0) {
+    return 'weights.categoryWeights values must be non-negative';
+  }
+  if (combat + social + partySupport === 0) {
+    return 'weights.categoryWeights must not all be zero';
+  }
+  return null;
+}
+
+/**
+ * GET /api/bard/profiles
+ *
+ * Returns all available campaign profiles: built-in code profiles plus any
+ * custom profiles the caller has saved to MongoDB.
+ *
+ * Built-in profiles have `isBuiltIn: true` and a human-readable string `id`.
+ * Custom profiles have `isBuiltIn: false` and a MongoDB ObjectId `id`.
+ * Custom profiles are sorted newest-first.
+ */
+router.get('/profiles', async (_req: Request, res: Response) => {
+  try {
+    const saved = await SavedProfile.find().sort({ createdAt: -1 });
+
+    const builtIn = CAMPAIGN_PROFILES.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      weights: p.weights,
+      isBuiltIn: true,
+    }));
+
+    const custom = saved.map(savedProfileToResponse);
+
+    res.json({
+      builtInCount: builtIn.length,
+      customCount: custom.length,
+      profiles: [...builtIn, ...custom],
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to retrieve profiles',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * POST /api/bard/profiles
+ *
+ * Saves a new custom campaign profile to MongoDB.
+ *
+ * Required body fields:
+ *   - name        (string): Human-readable profile name.
+ *   - weights     (object): Full or partial ScoringWeights object.
+ *                           Must include `weights.categoryWeights` with numeric
+ *                           combat, social, and partySupport fields (non-negative,
+ *                           not all zero).  Per-scenario weights default to 1.0 for
+ *                           any scenario not explicitly specified.
+ *
+ * Optional body fields:
+ *   - description (string): Human-readable description of the profile.
+ *
+ * Returns 201 with the created profile document.
+ */
+router.post('/profiles', async (req: Request, res: Response) => {
+  try {
+    const { name, description, weights } = req.body as {
+      name?: unknown;
+      description?: unknown;
+      weights?: unknown;
+    };
+
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      res.status(400).json({ error: 'name is required and must be a non-empty string' });
+      return;
+    }
+
+    const weightsError = validateWeights(weights);
+    if (weightsError) {
+      res.status(400).json({ error: weightsError });
+      return;
+    }
+
+    const w = weights as {
+      combatScenarios?: Record<string, number>;
+      socialScenarios?: Record<string, number>;
+      partySupportScenarios?: Record<string, number>;
+      categoryWeights: { combat: number; social: number; partySupport: number };
+    };
+
+    const profile = new SavedProfile({
+      name: name.trim(),
+      description: typeof description === 'string' ? description : '',
+      weights: {
+        combatScenarios: w.combatScenarios ?? {},
+        socialScenarios: w.socialScenarios ?? {},
+        partySupportScenarios: w.partySupportScenarios ?? {},
+        categoryWeights: w.categoryWeights,
+      },
+    });
+    await profile.save();
+
+    res.status(201).json({ profile: savedProfileToResponse(profile) });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to save profile',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * GET /api/bard/profiles/:id
+ *
+ * Returns a single profile by its ID.
+ *
+ * For built-in profiles, pass the string profile code (e.g. "dungeon-crawl").
+ * For custom profiles, pass the MongoDB ObjectId string.
+ *
+ * Returns 404 if no matching profile is found.
+ */
+router.get('/profiles/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Check built-in profiles first (matched by string code id)
+    const builtIn = CAMPAIGN_PROFILES.find((p) => p.id === id);
+    if (builtIn) {
+      res.json({ id: builtIn.id, name: builtIn.name, description: builtIn.description, weights: builtIn.weights, isBuiltIn: true });
+      return;
+    }
+
+    // Attempt DB lookup by ObjectId
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+    const profile = await SavedProfile.findById(id);
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+    res.json(savedProfileToResponse(profile));
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to retrieve profile',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * PUT /api/bard/profiles/:id
+ *
+ * Updates a saved custom profile.  Built-in profiles cannot be updated.
+ *
+ * Accepts the same body fields as POST /profiles (name, description, weights).
+ * Returns 400 if the id corresponds to a built-in profile.
+ * Returns 404 if no matching custom profile is found.
+ */
+router.put('/profiles/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Reject attempts to update built-in profiles
+    const isBuiltIn = CAMPAIGN_PROFILES.some((p) => p.id === id);
+    if (isBuiltIn) {
+      res.status(400).json({ error: 'Built-in profiles cannot be modified' });
+      return;
+    }
+
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    const { name, description, weights } = req.body as {
+      name?: unknown;
+      description?: unknown;
+      weights?: unknown;
+    };
+
+    const profile = await SavedProfile.findById(id);
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim() === '') {
+        res.status(400).json({ error: 'name must be a non-empty string' });
+        return;
+      }
+      profile.name = name.trim();
+    }
+
+    if (description !== undefined) {
+      profile.description = typeof description === 'string' ? description : '';
+    }
+
+    if (weights !== undefined) {
+      const weightsError = validateWeights(weights);
+      if (weightsError) {
+        res.status(400).json({ error: weightsError });
+        return;
+      }
+      const w = weights as {
+        combatScenarios?: Record<string, number>;
+        socialScenarios?: Record<string, number>;
+        partySupportScenarios?: Record<string, number>;
+        categoryWeights: { combat: number; social: number; partySupport: number };
+      };
+      profile.weights = {
+        combatScenarios: w.combatScenarios ?? {},
+        socialScenarios: w.socialScenarios ?? {},
+        partySupportScenarios: w.partySupportScenarios ?? {},
+        categoryWeights: w.categoryWeights,
+      };
+      profile.markModified('weights');
+    }
+
+    await profile.save();
+    res.json({ profile: savedProfileToResponse(profile) });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to update profile',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * DELETE /api/bard/profiles/:id
+ *
+ * Deletes a saved custom profile by its MongoDB ObjectId.
+ * Built-in profiles cannot be deleted.
+ *
+ * Returns 400 if the id corresponds to a built-in profile.
+ * Returns 404 if no matching custom profile is found.
+ */
+router.delete('/profiles/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Reject attempts to delete built-in profiles
+    const isBuiltIn = CAMPAIGN_PROFILES.some((p) => p.id === id);
+    if (isBuiltIn) {
+      res.status(400).json({ error: 'Built-in profiles cannot be deleted' });
+      return;
+    }
+
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    const profile = await SavedProfile.findByIdAndDelete(id);
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    res.json({ message: 'Profile deleted', id });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to delete profile',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
  * GET /api/bard/scoring-profiles
  *
  * Returns all available campaign scoring profiles with their weights.
@@ -150,23 +486,36 @@ router.get('/candidates', (_req: Request, res: Response) => {
  * individual simulations.
  *
  * Optional body fields:
- *   - profile  (string): Campaign profile ID (see GET /scoring-profiles).
+ *   - profile   (string): Campaign profile ID (see GET /scoring-profiles).
  *              One of: all-purpose, dungeon-crawl, social-intrigue, war-campaign,
  *              exploration.  Overrides custom weights when both are supplied.
+ *   - profileId (string): MongoDB ObjectId of a saved custom profile
+ *              (see POST /api/bard/profiles).  When provided, takes precedence over
+ *              both `profile` and `weights`.  If the ID is not found, falls back to
+ *              `profile` or `weights` or the default.
  *   - weights  (object): Custom `ScoringWeights` object or partial override.
- *              Ignored when `profile` is provided.
+ *              Ignored when `profile` or `profileId` is provided.
  *
  * The composite score in each result reflects the supplied weights.
  * The response includes `scoringWeightsUsed` so the caller always knows which
  * weights were applied.
  */
-router.post('/benchmark', (req: Request, res: Response) => {
+router.post('/benchmark', async (req: Request, res: Response) => {
   try {
-    const { weights, profile } = req.body as {
+    const { weights, profile, profileId } = req.body as {
       weights?: Partial<ScoringWeights>;
       profile?: string;
+      profileId?: string;
     };
-    const resolvedWeights = resolveWeights(profile ?? weights);
+
+    let resolvedWeights: ScoringWeights;
+    if (profileId && mongoose.isValidObjectId(profileId)) {
+      const saved = await SavedProfile.findById(profileId);
+      resolvedWeights = saved ? weightsFromDoc(saved) : resolveWeights(profile ?? weights);
+    } else {
+      resolvedWeights = resolveWeights(profile ?? weights);
+    }
+
     const results = runBardBenchmarks(resolvedWeights);
     res.json({
       benchmarkIterationsPerScenario: 200,
@@ -348,6 +697,9 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  *                Controls how scenario and category scores are weighted in the composite.
  *                Valid values: all-purpose, dungeon-crawl, social-intrigue, war-campaign,
  *                exploration.  Defaults to all-purpose when omitted.
+ *   - profileId  (string, optional): MongoDB ObjectId of a saved custom profile
+ *                (see POST /api/bard/profiles).  When provided, takes precedence over
+ *                `profile`.  If the ID is not found, falls back to `profile` or default.
  *   - scenarioFilter (string, optional): Restrict byScenario analytics to a single
  *                category. Valid values: combat, social, partySupport.
  *                When provided, only entries whose scenarioCategory matches are returned
@@ -369,13 +721,14 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  * NOTE: This is a computationally heavy endpoint. Default configuration evaluates
  * hundreds of bards in ~5-10 seconds.
  */
-router.get('/explore', (req: Request, res: Response) => {
+router.get('/explore', async (req: Request, res: Response) => {
   try {
     const rawTop = parseInt(String(req.query['top'] ?? '50'), 10);
     const rawIter = parseInt(String(req.query['iterations'] ?? '25'), 10);
     const topN = isNaN(rawTop) || rawTop < 0 ? 50 : rawTop;
     const iterations = isNaN(rawIter) || rawIter < 1 ? 25 : Math.min(rawIter, 50);
     const profile = req.query['profile'] ? String(req.query['profile']) : undefined;
+    const profileId = req.query['profileId'] ? String(req.query['profileId']) : undefined;
 
     const rawFilter = req.query['scenarioFilter']
       ? String(req.query['scenarioFilter'])
@@ -387,7 +740,16 @@ router.get('/explore', (req: Request, res: Response) => {
       ? (rawFilter as 'combat' | 'social' | 'partySupport')
       : undefined;
 
-    const result = runLoreBardExploration(iterations, topN, profile);
+    // Resolve weights: saved DB profile → code profile → default
+    let weightsArg: ScoringWeights | string | undefined = profile;
+    if (profileId && mongoose.isValidObjectId(profileId)) {
+      const saved = await SavedProfile.findById(profileId);
+      if (saved) {
+        weightsArg = weightsFromDoc(saved);
+      }
+    }
+
+    const result = runLoreBardExploration(iterations, topN, weightsArg);
 
     // Apply scenario category filter to byScenario (presentation layer)
     const filteredByScenario = scenarioFilter

@@ -1921,3 +1921,349 @@ describe('BardBenchmarkService - concentration re-save mechanic', () => {
     });
   });
 });
+
+// ─── Custom Saved Profile CRUD ────────────────────────────────────────────────
+
+const CUSTOM_WEIGHTS = {
+  combatScenarios: { 'Bandit Ambush': 2.0, 'Undead Horde': 3.0 },
+  socialScenarios: { 'Convince the City Guard': 1.5 },
+  partySupportScenarios: {},
+  categoryWeights: { combat: 0.7, social: 0.2, partySupport: 0.1 },
+};
+
+describe('POST /api/bard/profiles', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('creates a profile and returns 201 with the profile document', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({
+      name: 'My Custom Profile',
+      description: 'A test profile',
+      weights: CUSTOM_WEIGHTS,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.profile).toBeDefined();
+    expect(res.body.profile.name).toBe('My Custom Profile');
+    expect(res.body.profile.description).toBe('A test profile');
+    expect(res.body.profile.isBuiltIn).toBe(false);
+    expect(res.body.profile.id).toBeTruthy();
+  });
+
+  it('created profile has the supplied categoryWeights', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({
+      name: 'Combat Heavy',
+      weights: CUSTOM_WEIGHTS,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.profile.weights.categoryWeights.combat).toBe(0.7);
+    expect(res.body.profile.weights.categoryWeights.social).toBe(0.2);
+    expect(res.body.profile.weights.categoryWeights.partySupport).toBe(0.1);
+  });
+
+  it('returns 400 when name is missing', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({
+      weights: CUSTOM_WEIGHTS,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/name/i);
+  });
+
+  it('returns 400 when name is an empty string', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({
+      name: '   ',
+      weights: CUSTOM_WEIGHTS,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/name/i);
+  });
+
+  it('returns 400 when weights is missing', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({ name: 'No Weights' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/weights/i);
+  });
+
+  it('returns 400 when categoryWeights values are not numbers', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({
+      name: 'Bad Weights',
+      weights: { categoryWeights: { combat: 'high', social: 0.3, partySupport: 0.0 } },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when all categoryWeights are zero', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({
+      name: 'Zero Weights',
+      weights: { categoryWeights: { combat: 0, social: 0, partySupport: 0 } },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/zero/i);
+  });
+});
+
+describe('GET /api/bard/profiles', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('returns built-in profiles when no custom profiles exist', async () => {
+    const res = await request(app).get('/api/bard/profiles');
+    expect(res.status).toBe(200);
+    expect(res.body.builtInCount).toBe(5);
+    expect(res.body.customCount).toBe(0);
+    expect(Array.isArray(res.body.profiles)).toBe(true);
+    expect(res.body.profiles).toHaveLength(5);
+  });
+
+  it('all built-in profiles have isBuiltIn: true', async () => {
+    const res = await request(app).get('/api/bard/profiles');
+    res.body.profiles.forEach((p: { isBuiltIn: boolean }) => {
+      expect(p.isBuiltIn).toBe(true);
+    });
+  });
+
+  it('returns custom profiles alongside built-in profiles after creation', async () => {
+    await request(app).post('/api/bard/profiles').send({
+      name: 'My Campaign',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const res = await request(app).get('/api/bard/profiles');
+    expect(res.status).toBe(200);
+    expect(res.body.customCount).toBe(1);
+    expect(res.body.builtInCount).toBe(5);
+    expect(res.body.profiles).toHaveLength(6);
+  });
+
+  it('custom profile in the list has isBuiltIn: false', async () => {
+    await request(app).post('/api/bard/profiles').send({
+      name: 'Homebrew',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const listRes = await request(app).get('/api/bard/profiles');
+    const custom = listRes.body.profiles.find((p: { isBuiltIn: boolean }) => !p.isBuiltIn);
+    expect(custom).toBeDefined();
+    expect(custom.name).toBe('Homebrew');
+  });
+});
+
+describe('GET /api/bard/profiles/:id', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('returns a built-in profile by its code id', async () => {
+    const res = await request(app).get('/api/bard/profiles/dungeon-crawl');
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('dungeon-crawl');
+    expect(res.body.isBuiltIn).toBe(true);
+  });
+
+  it('returns a saved custom profile by its MongoDB ObjectId', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'Vault Profile',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const profileId = createRes.body.profile.id;
+    const res = await request(app).get(`/api/bard/profiles/${profileId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(profileId);
+    expect(res.body.name).toBe('Vault Profile');
+    expect(res.body.isBuiltIn).toBe(false);
+  });
+
+  it('returns 404 for an unknown code id', async () => {
+    const res = await request(app).get('/api/bard/profiles/nonexistent-profile');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for a valid ObjectId that does not exist in the DB', async () => {
+    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const res = await request(app).get(`/api/bard/profiles/${fakeId}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('PUT /api/bard/profiles/:id', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('updates a custom profile name and description', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'Original Name',
+      description: 'Before',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const profileId = createRes.body.profile.id;
+    const res = await request(app).put(`/api/bard/profiles/${profileId}`).send({
+      name: 'Updated Name',
+      description: 'After',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.profile.name).toBe('Updated Name');
+    expect(res.body.profile.description).toBe('After');
+  });
+
+  it('returns 400 when attempting to update a built-in profile', async () => {
+    const res = await request(app).put('/api/bard/profiles/social-intrigue').send({
+      name: 'Hacked Profile',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/built-in/i);
+  });
+
+  it('returns 404 when updating a non-existent custom profile', async () => {
+    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const res = await request(app).put(`/api/bard/profiles/${fakeId}`).send({ name: 'Ghost' });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/bard/profiles/:id', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('deletes a saved custom profile', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'To Delete',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const profileId = createRes.body.profile.id;
+    const delRes = await request(app).delete(`/api/bard/profiles/${profileId}`);
+    expect(delRes.status).toBe(200);
+    expect(delRes.body.message).toMatch(/deleted/i);
+
+    // Verify it's gone
+    const getRes = await request(app).get(`/api/bard/profiles/${profileId}`);
+    expect(getRes.status).toBe(404);
+  });
+
+  it('returns 400 when attempting to delete a built-in profile', async () => {
+    const res = await request(app).delete('/api/bard/profiles/all-purpose');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/built-in/i);
+  });
+
+  it('returns 404 when deleting a non-existent custom profile', async () => {
+    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const res = await request(app).delete(`/api/bard/profiles/${fakeId}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/bard/benchmark - profileId support', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('uses weights from a saved profile when profileId is provided', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'War Build',
+      weights: {
+        combatScenarios: {},
+        socialScenarios: {},
+        partySupportScenarios: {},
+        categoryWeights: { combat: 0.8, social: 0.1, partySupport: 0.1 },
+      },
+    });
+    const profileId = createRes.body.profile.id;
+    const res = await request(app).post('/api/bard/benchmark').send({ profileId });
+    expect(res.status).toBe(200);
+    expect(res.body.scoringWeightsUsed.categoryWeights.combat).toBeCloseTo(0.8, 5);
+    expect(res.body.results).toHaveLength(3);
+  });
+
+  it('falls back to default when profileId is not found', async () => {
+    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const res = await request(app).post('/api/bard/benchmark').send({ profileId: fakeId });
+    expect(res.status).toBe(200);
+    expect(res.body.scoringWeightsUsed.categoryWeights.combat).toBeCloseTo(0.4, 5);
+  });
+});
+
+describe('GET /api/bard/explore - profileId support', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('uses weights from a saved profile when ?profileId= is provided', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'Social Build',
+      weights: {
+        combatScenarios: {},
+        socialScenarios: {},
+        partySupportScenarios: {},
+        categoryWeights: { combat: 0.1, social: 0.8, partySupport: 0.1 },
+      },
+    });
+    const profileId = createRes.body.profile.id;
+    const res = await request(app).get(`/api/bard/explore?iterations=5&top=5&profileId=${profileId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.summary.scoringWeightsUsed.categoryWeights.social).toBeCloseTo(0.8, 5);
+  }, 60000);
+
+  it('falls back to default when ?profileId= is not found', async () => {
+    const fakeId = new (require('mongoose').Types.ObjectId)().toString();
+    const res = await request(app).get(`/api/bard/explore?iterations=5&top=5&profileId=${fakeId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.summary.scoringWeightsUsed.categoryWeights.combat).toBeCloseTo(0.4, 5);
+  }, 60000);
+});
