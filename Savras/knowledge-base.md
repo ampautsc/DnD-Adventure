@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–013)
+## Testing (Verified Sessions 002–014)
 
-- 271 tests across 6 suites, all passing as of Session 013.
+- 279 tests across 6 suites, all passing as of Session 014.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -129,16 +129,16 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 013)
+## Known Gaps (as of Session 014)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
 - Bardic Inspiration dice are not modeled as a short-rest resource in the combat simulation — each combat simulation starts fresh. This slightly underestimates the advantage of high-CHA candidates across longer adventuring days.
-- Enemy re-saves on concentration spells are not modeled (e.g., Hypnotic Pattern targets re-save at end of each turn). Currently, enemies remain controlled until concentration breaks via incoming damage.
+- ~~Enemy re-saves on concentration spells are not modeled~~ — **Resolved in Session 014.** End-of-round WIS re-saves implemented. Enemies roll `d20 + savingThrow >= spellSaveDC` each round. On success, they break free at current HP. Higher bard DC (Canaith Mandolin) makes re-saves harder.
 - `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
 - ~~Staff of Charming's social properties (Charm Person from charges) are not modeled~~ — **Resolved in Session 013.** `socialAdvantageSkills: ['Persuasion']` set on the Staff; `getEquipmentSocialAdvantageSkills()` applies it in `simulateSingleSocial`.
 - Custom saved profiles in MongoDB has not been implemented — campaign profiles remain code-only constants in `BardBenchmarkService.ts`.
-- No "0-feat, both ASIs on CHA" build path — the double ASI path (reaching CHA 21→20 with no feat utility) remains unevaluated. Current CHA+2 ASI pairs always include one real feat.
+- ~~No "0-feat, both ASIs on CHA" build path~~ — **Resolved in Session 014.** `['CHA +2 ASI', 'CHA +2 ASI']` added as 22nd FEAT_PAIR. Build matrix: 1976 builds. Double-ASI builds have no feat utility but reach CHA 20 on +2-CHA species (DC 16).
 
 ## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
 
@@ -197,11 +197,11 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&scenarioFilter=...`; returns `scoringWeightsUsed` and `scenarioFilter` (null when absent) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided), `scenarioScores` per build |
 | GET | `/api/bard/scoring-profiles` | Returns all campaign profiles with full weight configurations |
 
-### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–013)
+### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–014)
 
 **Build Matrix:**
-- 11 non-VH species × 21 feat pairs × 8 magic item pairs + 1 VH × 5 feat triples × 8 = **1888 builds** (Session 013)
-- Default iterations: 25 per scenario → ~1888 builds evaluated in ~3s
+- 11 non-VH species × 22 feat pairs × 8 magic item pairs + 1 VH × 5 feat triples × 8 = **1976 builds** (Session 014)
+- Default iterations: 25 per scenario → ~1976 builds evaluated in ~3s
 - Max iterations cap for exploration route: **50** (reduced from 200 in Session 009 due to larger matrix)
 - `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
 - `runLoreBardExploration(iterations, topN, weights?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied; each `BardBuildResult` includes `scenarioScores: Record<string, number>` (per-scenario scores for all 10 scenarios)
@@ -225,11 +225,19 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 3. Undead Horde (hard) — 4 skeletons + 2 skeleton archers, HP 13, AC 13
 4. **Added Session 009: Warlock's Hold (hard)** — 1 warlock (HP 32, AC 13, spellSaveDC 14, 40% Hold Person chance) + 2 cultists. Tests Magic Resistance mechanically.
 
-**Feat Pool (13, as of Session 013):** War Caster, Alert, Inspiring Leader, Lucky, Resilient (CON), Actor (+1 CHA), Fey Touched (+1 CHA), Shadow Touched (+1 CHA), Telekinetic (+1 CHA), Skilled, Tough, Spell Sniper, **CHA +2 ASI** (direct +2 CHA investment, no feat utility — added Session 013)
+**Concentration Re-Save Mechanic (Added Session 014):**
+- At the end of each round, all controlled enemies make a WIS save: `rollDie(20) + savingThrow >= spellSaveDC`
+- On success: enemy breaks free at current HP (not half HP) and re-enters combat
+- If all controlled enemies break free: `concentrating = false` (spell ends naturally)
+- Higher bard spell save DC (e.g., Canaith Mandolin +1) makes enemy re-saves harder
+- This change slightly reduces the value of pure concentration strategies and increases the value of high-DC builds
 
-**Feat Pairs Matrix (21, as of Session 013):**
+**Feat Pool (13, unchanged from Session 013):** War Caster, Alert, Inspiring Leader, Lucky, Resilient (CON), Actor (+1 CHA), Fey Touched (+1 CHA), Shadow Touched (+1 CHA), Telekinetic (+1 CHA), Skilled, Tough, Spell Sniper, **CHA +2 ASI** (direct +2 CHA investment)
+
+**Feat Pairs Matrix (22, as of Session 014):**
 - 15 original pairs (all two real feats)
-- **6 new CHA +2 ASI pairs (Session 013):** War Caster+ASI, Actor+ASI, Fey Touched+ASI, Lucky+ASI, Resilient(CON)+ASI, Alert+ASI
+- **6 CHA +2 ASI pairs (Session 013):** War Caster+ASI, Actor+ASI, Fey Touched+ASI, Lucky+ASI, Resilient(CON)+ASI, Alert+ASI
+- **1 double-ASI pair (Session 014):** CHA+2 ASI + CHA+2 ASI (pure stat investment, no feat utility). On +2-CHA species: CHA 20, DC 16. `byFeatCombination` key: `CHA +2 ASI + CHA +2 ASI`
 
 **Magic Item Pool (8):** Cloak of Protection, Hat of Disguise, +1 Rapier, Boots of Elvenkind, Periapt of Proof against Poison, Instrument of Bards (Canaith Mandolin, **+1 spell save DC** via `spellSaveDCBonus: 1`), Staff of Charming (**Persuasion advantage** via `socialAdvantageSkills: ['Persuasion']` — added Session 013), Ring of Mind Shielding
 

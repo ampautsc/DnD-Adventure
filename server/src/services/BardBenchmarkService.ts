@@ -1210,6 +1210,23 @@ function simulateSingleCombat(
         }
       }
     }
+
+    // ── End-of-round: Controlled enemies attempt to break free ─────────────────
+    // Hypnotic Pattern (and similar concentration spells with ongoing saves) allows
+    // each affected creature to make a new WIS saving throw at the end of its turn.
+    // We process all controlled enemies here, at the end of the round, as an
+    // approximation of the per-target-turn mechanic.
+    if (concentrating) {
+      for (const enemy of enemies.filter((e) => e.controlled && e.alive)) {
+        if (rollDie(20) + enemy.savingThrow >= spellSaveDC) {
+          enemy.controlled = false; // broke free at current HP
+        }
+      }
+      // If no enemies remain under control, concentration ends naturally
+      if (!enemies.some((e) => e.controlled)) {
+        concentrating = false;
+      }
+    }
   }
 
   const finalAlive = enemies.filter((e) => e.alive && !e.controlled);
@@ -2125,6 +2142,10 @@ const FEAT_PAIRS: [string, string][] = [
   ['Lucky', 'CHA +2 ASI'],
   ['Resilient (CON)', 'CHA +2 ASI'],
   ['Alert', 'CHA +2 ASI'],
+  // Pure CHA maximisation: no feat utility, both ASI slots invested in +2 CHA.
+  // On +2-CHA species (Half-Elf, Tiefling, Satyr, Yuan-Ti): 15 + 2 + 2 + 2 = 21 → capped at 20.
+  // DC 16, +5 modifier — the highest spell save DC achievable without Canaith Mandolin.
+  ['CHA +2 ASI', 'CHA +2 ASI'],
 ];
 
 /**
