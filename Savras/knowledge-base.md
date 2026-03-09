@@ -142,7 +142,59 @@ The system is being built to serve them. The tools under construction are:
 - On **defeat**: dead characters' `combatStats.losses` and all characters' `combatStats.totalEncounters` are incremented.
 - On **retreat** (POST `/end`): all characters' `combatStats.totalEncounters` are incremented.
 
-## Open Questions and Unresolved Observations
+## The Bard Selection System (Added Session 004)
+
+### Three Candidates Defined
+
+| Candidate | Species | Subclass | Combat Focus | Social Focus |
+|-----------|---------|----------|-------------|-------------|
+| Lyra Silverstring | Half-Elf | College of Lore | Counterspell + control spells | Persuasion/Deception Expertise |
+| Cadwyn Ironbeat | Variant Human | College of Valor | Extra Attack + Adamantine Armor | Performance Expertise |
+| Vael Duskwhisper | Tiefling | College of Glamour | Mirror Image + control spells | Deception/Persuasion Expertise + Actor feat |
+
+### Benchmarking Architecture
+
+- `server/src/services/BardBenchmarkService.ts` — Pure service, no DB dependency
+- `server/src/routes/bard.ts` — 3 routes: GET /candidates, POST /benchmark, GET /recommendation
+- 200 iterations per scenario × 3 combat + 3 social = 1,200 total simulations per benchmark run
+- Combat score and social score each weighted 50% in composite ranking
+- Results include: per-scenario details, strengths/weaknesses, Savras's personal assessment
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/bard/candidates` | Returns all 3 candidate stat blocks |
+| POST | `/api/bard/benchmark` | Runs full simulation and returns ranked results |
+| GET | `/api/bard/recommendation` | Returns top-ranked candidate with full stat block |
+
+### Key Build Details (Level 8)
+
+**Lyra Silverstring (Half-Elf, College of Lore)**
+- STR 8, DEX 14, CON 14, INT 12, WIS 12, CHA 20
+- AC 14, HP 52 (54 with Cloak), Speed 30
+- Feats: War Caster, Inspiring Leader
+- Expertise: Persuasion, Deception
+- Magic Items: Hat of Disguise (uncommon), Cloak of Protection (uncommon)
+- Unique: Counterspell (Magical Secrets), Fey Ancestry, Cutting Words
+
+**Cadwyn Ironbeat (Variant Human, College of Valor)**
+- STR 12, DEX 16, CON 14, INT 10, WIS 12, CHA 18
+- AC 17, HP 58, Speed 30
+- Feats: Alert (+5 initiative, can't be surprised), War Caster, Tough
+- Expertise: Performance, Athletics
+- Magic Items: +1 Rapier (uncommon), Adamantine Armor/Breastplate (uncommon)
+- Unique: Extra Attack, crits negated by Adamantine Armor
+
+**Vael Duskwhisper (Tiefling, College of Glamour)**
+- STR 8, DEX 14, CON 14, INT 12, WIS 12, CHA 20
+- AC 14, HP 52, Speed 30
+- Feats: Actor (+1 CHA, advantage on Deception/Performance), Inspiring Leader
+- Expertise: Deception, Persuasion
+- Magic Items: Hat of Disguise (uncommon), Periapt of Proof against Poison (uncommon)
+- Unique: Hellish Resistance (fire), Infernal Legacy, Mantle of Inspiration, Enthralling Performance
+
+
 
 *Truths not yet fully known. These are probabilities, not facts.*
 
