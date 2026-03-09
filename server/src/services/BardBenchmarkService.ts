@@ -35,6 +35,8 @@ export interface BardEquipment {
   properties: string[];
   damage?: string;
   armorClass?: number;
+  /** Bonus applied to spell save DC while this item is used as a focus (e.g. Canaith Mandolin). */
+  spellSaveDCBonus?: number;
 }
 
 /**
@@ -623,6 +625,14 @@ function modifierFor(score: number): number {
   return Math.floor((score - 10) / 2);
 }
 
+/**
+ * Sum of all spell save DC bonuses granted by equipped items for a candidate.
+ * Currently only the Instrument of the Bards — Canaith Mandolin provides a +1 bonus.
+ */
+function getEquipmentSpellSaveDCBonus(candidate: BardCandidate): number {
+  return candidate.equipment.reduce((sum, e) => sum + (e.spellSaveDCBonus ?? 0), 0);
+}
+
 // ─── Candidate Definitions ────────────────────────────────────────────────────
 
 /**
@@ -916,7 +926,7 @@ function simulateSingleCombat(
   const con = modifierFor(candidate.abilityScores.constitution);
   const wis = modifierFor(candidate.abilityScores.wisdom);
   const spellAttack = cha + candidate.proficiencyBonus;
-  const spellSaveDC = 8 + cha + candidate.proficiencyBonus;
+  const spellSaveDC = 8 + cha + candidate.proficiencyBonus + getEquipmentSpellSaveDCBonus(candidate);
 
   // Build enemy list
   const enemies = scenario.enemies.flatMap((e) =>
@@ -1670,6 +1680,8 @@ export interface MagicItemTemplate {
   properties: string[];
   armorClass?: number;
   damage?: string;
+  /** Bonus applied to spell save DC while this item is used as a spellcasting focus. */
+  spellSaveDCBonus?: number;
 }
 
 /**
@@ -2019,6 +2031,7 @@ export const LORE_BARD_MAGIC_ITEM_POOL: MagicItemTemplate[] = [
       'Spells: Fly, Invisibility, Levitate, Protection from Evil and Good (1×/day each)',
       'Requires attunement by a bard',
     ],
+    spellSaveDCBonus: 1,
   },
   {
     name: 'Staff of Charming',
@@ -2321,7 +2334,7 @@ export function runLoreBardExploration(
       armorClass: candidate.armorClass,
       maxHitPoints: candidate.maxHitPoints,
       charismaModifier: cha,
-      spellSaveDC: 8 + cha + candidate.proficiencyBonus,
+      spellSaveDC: 8 + cha + candidate.proficiencyBonus + getEquipmentSpellSaveDCBonus(candidate),
       compositeScore,
       combatScore,
       socialScore,

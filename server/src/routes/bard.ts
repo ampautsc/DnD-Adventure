@@ -348,16 +348,23 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  *                Controls how scenario and category scores are weighted in the composite.
  *                Valid values: all-purpose, dungeon-crawl, social-intrigue, war-campaign,
  *                exploration.  Defaults to all-purpose when omitted.
+ *   - scenarioFilter (string, optional): Restrict byScenario analytics to a single
+ *                category. Valid values: combat, social, partySupport.
+ *                When provided, only entries whose scenarioCategory matches are returned
+ *                in byScenario. topBuilds and other breakdowns are unaffected.
+ *                Useful for focused analysis without the full 10-scenario payload.
  *
  * Response includes:
- *   - summary: build count, iterations, fixed subclass, and scoringWeightsUsed
+ *   - summary: build count, iterations, fixed subclass, scoringWeightsUsed, and
+ *              scenarioFilter (the applied filter, or null when not provided)
  *   - topBuilds: ranked array of the best N builds (each build includes scenarioScores)
  *   - bySpecies: best build + average score per species
  *   - byFeatCombination: best build + average score per feat combo
  *   - byMagicItems: best build + average score per item pair
  *   - byScenario: per-scenario analytics (topBuild, averageScore, topScore, bottomScore,
- *                 scenarioCategory) across all 10 scenarios (4 combat, 3 social, 3 party
- *                 support). High variance in a scenario indicates strong build differentiation.
+ *                 scenarioCategory) across the 10 scenarios (4 combat, 3 social, 3 party
+ *                 support), filtered to the requested category if scenarioFilter was given.
+ *                 High variance in a scenario indicates strong build differentiation.
  *
  * NOTE: This is a computationally heavy endpoint. Default configuration evaluates
  * hundreds of bards in ~5-10 seconds.
@@ -370,8 +377,35 @@ router.get('/explore', (req: Request, res: Response) => {
     const iterations = isNaN(rawIter) || rawIter < 1 ? 25 : Math.min(rawIter, 50);
     const profile = req.query['profile'] ? String(req.query['profile']) : undefined;
 
+    const rawFilter = req.query['scenarioFilter']
+      ? String(req.query['scenarioFilter'])
+      : undefined;
+    const validFilters: Array<'combat' | 'social' | 'partySupport'> = [
+      'combat', 'social', 'partySupport',
+    ];
+    const scenarioFilter = rawFilter && validFilters.includes(rawFilter as 'combat' | 'social' | 'partySupport')
+      ? (rawFilter as 'combat' | 'social' | 'partySupport')
+      : undefined;
+
     const result = runLoreBardExploration(iterations, topN, profile);
-    res.json(result);
+
+    // Apply scenario category filter to byScenario (presentation layer)
+    const filteredByScenario = scenarioFilter
+      ? Object.fromEntries(
+          Object.entries(result.byScenario).filter(
+            ([, entry]) => entry.scenarioCategory === scenarioFilter,
+          ),
+        )
+      : result.byScenario;
+
+    res.json({
+      ...result,
+      summary: {
+        ...result.summary,
+        scenarioFilter: scenarioFilter ?? null,
+      },
+      byScenario: filteredByScenario,
+    });
   } catch (err) {
     res.status(500).json({
       error: 'Failed to run bard exploration',
