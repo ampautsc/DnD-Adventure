@@ -279,5 +279,81 @@ describe('combatStats and XP on victory', () => {
     expect(charRes.status).toBe(200);
     expect(charRes.body.combatStats.totalEncounters).toBe(1);
     expect(charRes.body.combatStats.wins).toBe(1);
+    // XP should be awarded to the surviving character
+    expect(charRes.body.experiencePoints).toBe(150);
+    // damageDone: 6 attacks × 8 damage = 48; kills: 3 enemies
+    expect(charRes.body.combatStats.damageDone).toBe(48);
+    expect(charRes.body.combatStats.kills).toBe(3);
+  });
+});
+
+describe('character HP persistence after combat', () => {
+  afterEach(() => {
+    jest.spyOn(Math, 'random').mockRestore();
+  });
+
+  it('updates character hitPoints.current in DB after taking damage and retreating', async () => {
+    // Mock random: attackRoll = floor(0.99 * 20) + 1 = 20; damage = floor(0.99 * 8) + 1 = 8
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const { session, characterId } = await createCombatSession();
+    const actor = session.participants.find((p: { type: string }) => p.type === 'character');
+    const enemy = session.participants.find((p: { type: string }) => p.type === 'enemy');
+
+    // Enemy attacks character: roll 20 >= AC 13 → hit; damage 8; character HP 28 → 20
+    await request(app).post(`/api/combat/${session._id}/turn`).send({
+      participantId: enemy.id,
+      actionType: 'attack',
+      targetId: actor.id,
+    });
+
+    // End session (retreat) — HP should be persisted
+    await request(app).post(`/api/combat/${session._id}/end`);
+
+    const charRes = await request(app).get(`/api/characters/${characterId}`);
+    expect(charRes.status).toBe(200);
+    expect(charRes.body.hitPoints.current).toBe(20);
+    expect(charRes.body.combatStats.damageReceived).toBe(8);
+  });
+});
+
+describe('per-turn combatStats tracking', () => {
+  afterEach(() => {
+    jest.spyOn(Math, 'random').mockRestore();
+  });
+
+  it('increments damageDone for a character attacker on a hit', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const { session, characterId } = await createCombatSession();
+    const actor = session.participants.find((p: { type: string }) => p.type === 'character');
+    const enemy = session.participants.find((p: { type: string }) => p.type === 'enemy');
+
+    await request(app).post(`/api/combat/${session._id}/turn`).send({
+      participantId: actor.id,
+      actionType: 'attack',
+      targetId: enemy.id,
+    });
+
+    const charRes = await request(app).get(`/api/characters/${characterId}`);
+    expect(charRes.status).toBe(200);
+    expect(charRes.body.combatStats.damageDone).toBe(8);
+  });
+
+  it('increments healingDone for a character after a heal action', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const { session, characterId } = await createCombatSession();
+    const actor = session.participants.find((p: { type: string }) => p.type === 'character');
+
+    // healAmount = floor(0.99 * 8) + 1 = 8
+    await request(app).post(`/api/combat/${session._id}/turn`).send({
+      participantId: actor.id,
+      actionType: 'heal',
+    });
+
+    const charRes = await request(app).get(`/api/characters/${characterId}`);
+    expect(charRes.status).toBe(200);
+    expect(charRes.body.combatStats.healingDone).toBe(8);
   });
 });

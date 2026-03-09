@@ -103,27 +103,12 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Combat System Details (Verified Session 002)
+## Testing (Verified Sessions 002–005)
 
-- Combat participants use `id` (string) not `_id` (ObjectId) for actor/target identification in turn actions.
-- The `POST /api/combat/:id/turn` route (formerly `/action`) handles: `attack`, `spell`, `heal`, `dodge`, `disengage`, `dash`, and generic actions.
-- Combat auto-resolves when all enemies or all characters are eliminated.
-- All combat outcomes currently award `xpAwarded: 0` — XP calculation is not yet implemented.
-- The `CombatEngine.ts` service (42KB) contains extensive combat logic but does not appear to be wired to the combat routes; routes implement their own simplified combat resolution inline.
-
-## Testing (Verified Session 003)
-
-- 75 tests across 5 suites, all passing as of 2026-03-09 (Session 003).
-- `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12), damage=8 (10 HP enemy dies in 2 hits), character initiative > enemy initiative. Reliable for deterministic victory testing.
+- 117 tests across 6 suites, all passing as of 2026-03-09 (Session 005).
+- `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
-
-## Known Gaps
-
-- `kills`, `damageDone`, `damageReceived`, `healingDone` in `combatStats` remain at 0 — these require per-turn tracking that the current simplified combat route does not perform. Wiring `CombatEngine.ts` to the routes would enable these.
-- Character HP is not updated after combat to reflect damage taken during the session.
-- Character XP does not persist across sessions — there is no `experiencePoints` field on the Character model. XP is reported in the combat result but not stored on the character.
-- `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline.
 
 ## Rate-Limiting (Added Session 003)
 
@@ -132,15 +117,24 @@ The system is being built to serve them. The tools under construction are:
 - Skipped when `process.env.NODE_ENV === 'test'` to avoid breaking the test suite.
 - Added in `src/index.ts` after `express.json()` middleware.
 
-## Combat System Details (Verified Sessions 002–003)
+## Combat System Details (Verified Sessions 002–005)
 
 - Combat participants use `id` (string) not `_id` (ObjectId) for actor/target identification in turn actions.
 - The `POST /api/combat/:id/turn` route handles: `attack`, `spell`, `heal`, `dodge`, `disengage`, `dash`, and generic actions.
 - Combat auto-resolves when all enemies or all characters are eliminated.
-- On **victory**: `xpAwarded` is fetched from `encounter.rewards.xp` (was always 0 before Session 003).
+- On **victory**: `xpAwarded` is fetched from `encounter.rewards.xp`; surviving characters receive `$inc { experiencePoints: xpAwarded }`.
 - On **victory**: surviving characters' `combatStats.wins` and all characters' `combatStats.totalEncounters` are incremented.
 - On **defeat**: dead characters' `combatStats.losses` and all characters' `combatStats.totalEncounters` are incremented.
 - On **retreat** (POST `/end`): all characters' `combatStats.totalEncounters` are incremented.
+- On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
+- Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
+
+## Known Gaps (as of Session 005)
+
+- No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
+- `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
+- The winning bard candidate (from Session 004) has not been instantiated as a persistent Character in the database.
+- `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
 
 ## The Bard Selection System (Added Session 004)
 

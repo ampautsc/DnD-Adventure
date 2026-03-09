@@ -1,10 +1,27 @@
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
-import { CombatSession } from '../models/CombatSession';
+import { CombatSession, IParticipant } from '../models/CombatSession';
 import { Encounter } from '../models/Encounter';
 import { Character } from '../models/Character';
 
 const router = Router();
+
+/** Persist each character participant's current HP back to the Character document. */
+async function persistCharacterHp(participants: IParticipant[], context: string): Promise<void> {
+  if (participants.length === 0) return;
+  try {
+    await Character.bulkWrite(
+      participants.map((p) => ({
+        updateOne: {
+          filter: { _id: p.id },
+          update: { $set: { 'hitPoints.current': p.hp } },
+        },
+      }))
+    );
+  } catch (hpErr) {
+    console.warn(`Could not update character HP after ${context}:`, (hpErr as Error).message);
+  }
+}
 
 // POST /start - start a new combat session
 router.post('/start', async (req: Request, res: Response) => {
@@ -120,6 +137,7 @@ router.post('/:id/turn', async (req: Request, res: Response) => {
 
     const attackRoll = Math.floor(Math.random() * 20) + 1;
     let damage = 0;
+    let healAmount = 0;
     let result = '';
     let logMessage = '';
 
@@ -165,7 +183,7 @@ router.post('/:id/turn', async (req: Request, res: Response) => {
       }
       case 'heal': {
         const healTarget = target ?? actor;
-        const healAmount = Math.floor(Math.random() * 8) + 1;
+        healAmount = Math.floor(Math.random() * 8) + 1;
         healTarget.hp = Math.min(healTarget.maxHp, healTarget.hp + healAmount);
         result = `Healed ${healTarget.name} for ${healAmount} HP (now ${healTarget.hp}/${healTarget.maxHp})`;
         logMessage = `${actor.name} heals ${healTarget.name}: ${result}`;
@@ -186,6 +204,25 @@ router.post('/:id/turn', async (req: Request, res: Response) => {
       default:
         result = `${actor.name} performs ${actionType}`;
         logMessage = result;
+    }
+
+    // Track per-character per-turn combat stats
+    try {
+      if (damage > 0) {
+        if (actor.type === 'character') {
+          const actorInc: Record<string, number> = { 'combatStats.damageDone': damage };
+          if (target && !target.isAlive) actorInc['combatStats.kills'] = 1;
+          await Character.updateOne({ _id: actor.id }, { $inc: actorInc });
+        }
+        if (target?.type === 'character') {
+          await Character.updateOne({ _id: target.id }, { $inc: { 'combatStats.damageReceived': damage } });
+        }
+      }
+      if (healAmount > 0 && actor.type === 'character') {
+        await Character.updateOne({ _id: actor.id }, { $inc: { 'combatStats.healingDone': healAmount } });
+      }
+    } catch (statErr) {
+      console.warn('Could not update per-turn combat stats:', (statErr as Error).message);
     }
 
     // Determine current round or create a new one
@@ -245,6 +282,12 @@ router.post('/:id/turn', async (req: Request, res: Response) => {
         if (survivorIds.length > 0) {
           await Character.updateMany({ _id: { $in: survivorIds } }, { $inc: { 'combatStats.wins': 1 } });
         }
+        // Award XP to survivors
+        if (xpAwarded > 0 && survivorIds.length > 0) {
+          await Character.updateMany({ _id: { $in: survivorIds } }, { $inc: { experiencePoints: xpAwarded } });
+        }
+        // Persist final HP for all character participants
+        await persistCharacterHp(characterParticipants, 'victory');
       }
     } else if (aliveCharacters.length === 0) {
       session.status = 'completed';
@@ -266,6 +309,8 @@ router.post('/:id/turn', async (req: Request, res: Response) => {
         if (deadIds.length > 0) {
           await Character.updateMany({ _id: { $in: deadIds } }, { $inc: { 'combatStats.losses': 1 } });
         }
+        // Persist final HP for all character participants
+        await persistCharacterHp(characterParticipants, 'defeat');
       }
     }
 
@@ -311,6 +356,8 @@ router.post('/:id/end', async (req: Request, res: Response) => {
     if (characterParticipants.length > 0) {
       const allIds = characterParticipants.map((p) => p.id);
       await Character.updateMany({ _id: { $in: allIds } }, { $inc: { 'combatStats.totalEncounters': 1 } });
+      // Persist final HP for all character participants
+      await persistCharacterHp(characterParticipants, 'retreat');
     }
 
     await session.save();

@@ -93,6 +93,7 @@ export interface ICharacter extends Document {
   exhaustionLevel: number;
   deathSaves: IDeathSaves;
   combatStats: ICombatStats;
+  experiencePoints: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -189,6 +190,7 @@ const CharacterSchema = new Schema<ICharacter>(
     exhaustionLevel: { type: Number, default: 0, min: 0, max: 6 },
     deathSaves: { type: DeathSavesSchema, default: () => ({ successes: 0, failures: 0 }) },
     combatStats: { type: CombatStatsSchema, default: () => ({}) },
+    experiencePoints: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );
