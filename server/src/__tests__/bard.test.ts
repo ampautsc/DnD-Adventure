@@ -609,6 +609,62 @@ describe('POST /api/bard/instantiate', () => {
     expect(getRes.body.characterClass).toBe('Bard');
     expect(getRes.body.name).toBeTruthy();
   });
+
+  it('returns 201 when a valid exploration buildId is provided', async () => {
+    const buildId = generateLoreBardBuilds()[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId });
+    expect(res.status).toBe(201);
+    expect(res.body.characterId).toBeTruthy();
+    expect(res.body.character).toBeDefined();
+  });
+
+  it('exploration build character has subclass College of Lore and level 8', async () => {
+    const buildId = generateLoreBardBuilds()[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId });
+    expect(res.body.character.characterClass).toBe('Bard');
+    expect(res.body.character.subclass).toBe('College of Lore');
+    expect(res.body.character.level).toBe(8);
+  });
+
+  it('exploration build character species matches the buildId species segment', async () => {
+    const builds = generateLoreBardBuilds();
+    const halfElfBuild = builds.find((b) => b.id.startsWith('lore-half-elf-standard__'));
+    expect(halfElfBuild).toBeDefined();
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId: halfElfBuild!.id });
+    expect(res.status).toBe(201);
+    expect(res.body.character.subspecies).toBe('Standard Half-Elf');
+  });
+
+  it('benchmarkRank is 0 for exploration build instantiation', async () => {
+    const buildId = generateLoreBardBuilds()[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId });
+    expect(res.body.benchmarkRank).toBe(0);
+  });
+
+  it('returns 400 when an invalid buildId is provided', async () => {
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ buildId: 'lore-invalid-species__unknown-feat__unknown-item' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/buildId/i);
+  });
+
+  it('returns 400 when both candidateId and buildId are provided', async () => {
+    const buildId = generateLoreBardBuilds()[0].id;
+    const res = await request(app)
+      .post('/api/bard/instantiate')
+      .send({ candidateId: 'lyra-silverstring', buildId });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeTruthy();
+  });
 });
 
 // ─── Lore Bard Exploration System Tests ──────────────────────────────────────

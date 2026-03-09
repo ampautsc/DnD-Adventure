@@ -600,21 +600,51 @@ router.get('/recommendation', (req: Request, res: Response) => {
  *
  * Creates the chosen bard as a persistent Character document in MongoDB.
  *
- * Optional body: { candidateId: string }
- *   - If provided, that specific candidate is instantiated without running the benchmark.
- *   - If omitted, the full benchmark is run and the top-ranked candidate is instantiated.
+ * Optional body fields (mutually exclusive):
+ *   - candidateId: string — instantiates one of the 3 named manual candidates
+ *     (lyra-silverstring, cadwyn-ironbeat, vael-duskwhisper). A benchmark run is
+ *     performed to determine the candidate's rank (informational; does not affect
+ *     which candidate is instantiated). benchmarkRank reflects that rank.
+ *   - buildId: string — instantiates any build from the exploration matrix by its
+ *     exact buildId (e.g. from GET /api/bard/explore or GET /api/bard/explore/:buildId).
+ *     benchmarkRank is 0 (the build is not ranked against the full matrix here).
+ *
+ * If neither is provided, the full benchmark is run and the top-ranked manual
+ * candidate is instantiated automatically.
  *
  * Returns 201 with { characterId, benchmarkRank, character }.
  */
 router.post('/instantiate', async (req: Request, res: Response) => {
   try {
-    const { candidateId } = req.body as { candidateId?: string };
+    const { candidateId, buildId } = req.body as { candidateId?: string; buildId?: string };
+
+    if (candidateId && buildId) {
+      res.status(400).json({
+        error: 'Provide either candidateId or buildId, not both',
+        details: 'candidateId selects a named manual candidate; buildId selects an exploration matrix build.',
+      });
+      return;
+    }
+
     const candidates = getBardCandidates();
 
     let chosenCandidate: BardCandidate | undefined;
     let benchmarkRank = 1;
 
-    if (candidateId) {
+    if (buildId) {
+      // Exploration matrix build — look up by exact buildId
+      const explorationBuilds = generateLoreBardBuilds();
+      chosenCandidate = explorationBuilds.find((b) => b.id === buildId);
+      if (!chosenCandidate) {
+        res.status(400).json({
+          error: 'Invalid buildId',
+          details: `No exploration build found with id "${buildId}". Use GET /api/bard/explore to discover valid build IDs.`,
+        });
+        return;
+      }
+      // Exploration builds are not ranked against the full 1976-build matrix here.
+      benchmarkRank = 0;
+    } else if (candidateId) {
       chosenCandidate = candidates.find((c) => c.id === candidateId);
       if (!chosenCandidate) {
         res.status(400).json({
