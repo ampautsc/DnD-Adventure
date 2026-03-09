@@ -732,6 +732,7 @@ function simulateSingleCombat(
     }
 
     // ── Candidate's turn ──────────────────────────────────────────────
+    // If Hidden Step is active, the bard refrains from attacking to maintain stealth.
     // Use control spell in round 1 if available and not yet used
     if (hasControlSpell && !controlSpellUsed && aliveEnemies.length >= 2) {
       // Hypnotic Pattern / Hold Person — enemies must make WIS save
@@ -745,7 +746,7 @@ function simulateSingleCombat(
       }
       controlSpellUsed = true;
     } else if (!hiddenStepActive) {
-      // Hidden Step active: bard refrains from attacking to keep the invisibility.
+      // Hidden Step is not active — bard can attack normally.
       // Attack with weapon (Valor gets Extra Attack at 6, so 2 attacks)
       const attacks = isValorBard ? 2 : 1;
       const target = aliveEnemies[0];
@@ -784,8 +785,8 @@ function simulateSingleCombat(
       // (Satyr, Yuan-Ti) roll their WIS save with advantage.
       if (enemy.spellSaveDC && enemy.spellUseChance && Math.random() < enemy.spellUseChance) {
         const wisRoll1 = rollDie(20);
-        const wisRoll2 = hasMagicResistance ? rollDie(20) : wisRoll1;
-        const wisRoll = hasMagicResistance ? Math.max(wisRoll1, wisRoll2) : wisRoll1;
+        // Magic Resistance: roll a second die and take the higher result (advantage).
+        const wisRoll = hasMagicResistance ? Math.max(wisRoll1, rollDie(20)) : wisRoll1;
         if (wisRoll + wis < enemy.spellSaveDC) {
           // Bard is incapacitated: concentration breaks, and takes a guaranteed hit
           if (concentrating) {
@@ -809,10 +810,9 @@ function simulateSingleCombat(
       }
 
       // ── Enemy Melee / Ranged Attack ──────────────────────────────────────────
-      // Hidden Step: if active, enemy attacks with disadvantage (bard is invisible).
+      // Hidden Step: bard is invisible — attacker must roll with disadvantage (take the lower die).
       const attackRoll1 = rollDie(20);
-      const attackRoll2 = hiddenStepActive ? rollDie(20) : attackRoll1;
-      const attackRoll = hiddenStepActive ? Math.min(attackRoll1, attackRoll2) : attackRoll1;
+      const attackRoll = hiddenStepActive ? Math.min(attackRoll1, rollDie(20)) : attackRoll1;
       const isCrit = attackRoll === 20 && !hasAdamantine;
 
       // Mirror Image: 1/3 chance of hitting an image instead
