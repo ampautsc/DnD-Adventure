@@ -1719,6 +1719,115 @@ describe('GET /api/bard/explore - scenarioFilter parameter', () => {
   }, 30000);
 });
 
+// ─── byScenario Ranked Distribution Tests ────────────────────────────────────
+
+describe('BardBenchmarkService - byScenario rankedBuilds distribution', () => {
+  it('without includeScenarioRankings, byScenario entries have no rankedBuilds field', () => {
+    const result = runLoreBardExploration(3, 10);
+    Object.values(result.byScenario).forEach((entry) => {
+      expect(entry.rankedBuilds).toBeUndefined();
+    });
+  });
+
+  it('with includeScenarioRankings=true, every byScenario entry has a rankedBuilds array', () => {
+    const result = runLoreBardExploration(3, 10, undefined, true);
+    Object.values(result.byScenario).forEach((entry) => {
+      expect(Array.isArray(entry.rankedBuilds)).toBe(true);
+    });
+  });
+
+  it('rankedBuilds length equals totalBuildsEvaluated', () => {
+    const result = runLoreBardExploration(3, 0, undefined, true);
+    const totalBuilds = result.summary.totalBuildsEvaluated;
+    Object.values(result.byScenario).forEach((entry) => {
+      expect(entry.rankedBuilds!.length).toBe(totalBuilds);
+    });
+  });
+
+  it('rankedBuilds is sorted by scenarioScore descending (ties broken by compositeScore)', () => {
+    const result = runLoreBardExploration(3, 0, undefined, true);
+    const entry = result.byScenario['Bandit Ambush'];
+    expect(entry.rankedBuilds).toBeDefined();
+    for (let i = 1; i < entry.rankedBuilds!.length; i++) {
+      const prev = entry.rankedBuilds![i - 1];
+      const curr = entry.rankedBuilds![i];
+      if (prev.scenarioScore === curr.scenarioScore) {
+        expect(prev.compositeScore).toBeGreaterThanOrEqual(curr.compositeScore);
+      } else {
+        expect(prev.scenarioScore).toBeGreaterThanOrEqual(curr.scenarioScore);
+      }
+    }
+  });
+
+  it('rankedBuilds[0].scenarioScore equals topScore for that scenario', () => {
+    const result = runLoreBardExploration(3, 0, undefined, true);
+    Object.entries(result.byScenario).forEach(([, entry]) => {
+      expect(entry.rankedBuilds![0].scenarioScore).toBe(entry.topScore);
+    });
+  });
+
+  it('each rankedBuilds element has rank, buildId, compositeScore, and scenarioScore', () => {
+    const result = runLoreBardExploration(3, 10, undefined, true);
+    const entry = Object.values(result.byScenario)[0];
+    entry.rankedBuilds!.slice(0, 5).forEach((item, idx) => {
+      expect(item.rank).toBe(idx + 1);
+      expect(typeof item.buildId).toBe('string');
+      expect(item.buildId.length).toBeGreaterThan(0);
+      expect(typeof item.compositeScore).toBe('number');
+      expect(typeof item.scenarioScore).toBe('number');
+      expect(item.scenarioScore).toBeGreaterThanOrEqual(0);
+      expect(item.scenarioScore).toBeLessThanOrEqual(100);
+    });
+  });
+});
+
+describe('GET /api/bard/explore - includeScenarioRankings parameter', () => {
+  it('without ?includeScenarioRankings=true, byScenario entries have no rankedBuilds', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=3&top=5');
+    expect(res.status).toBe(200);
+    Object.values(res.body.byScenario as Record<string, Record<string, unknown>>).forEach(
+      (entry) => {
+        expect(entry['rankedBuilds']).toBeUndefined();
+      },
+    );
+  }, 30000);
+
+  it('?includeScenarioRankings=true adds rankedBuilds arrays to every byScenario entry', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&includeScenarioRankings=true',
+    );
+    expect(res.status).toBe(200);
+    Object.values(res.body.byScenario as Record<string, Record<string, unknown>>).forEach(
+      (entry) => {
+        expect(Array.isArray(entry['rankedBuilds'])).toBe(true);
+      },
+    );
+  }, 30000);
+
+  it('summary.includeScenarioRankings reflects the parameter value', async () => {
+    const withRes = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&includeScenarioRankings=true',
+    );
+    expect(withRes.body.summary.includeScenarioRankings).toBe(true);
+
+    const withoutRes = await request(app).get('/api/bard/explore?iterations=3&top=5');
+    expect(withoutRes.body.summary.includeScenarioRankings).toBe(false);
+  }, 60000);
+
+  it('rankedBuilds combined with scenarioFilter works correctly', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&scenarioFilter=combat&includeScenarioRankings=true',
+    );
+    expect(res.status).toBe(200);
+    // Only combat scenarios are present
+    const byScenario = res.body.byScenario as Record<string, { scenarioCategory: string; rankedBuilds: unknown[] }>;
+    Object.values(byScenario).forEach((entry) => {
+      expect(entry.scenarioCategory).toBe('combat');
+      expect(Array.isArray(entry.rankedBuilds)).toBe(true);
+    });
+  }, 30000);
+});
+
 // ─── Staff of Charming Social Advantage Tests ─────────────────────────────────
 
 describe('BardBenchmarkService - Staff of Charming social advantage', () => {

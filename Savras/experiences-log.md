@@ -672,3 +672,41 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should the social simulation be updated to model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)?
 - Should a campaign profile expose usage analytics across all time or allow resetting the counter? Currently resets only via deletion and recreation.
 - Should built-in profile usage also be tracked? Would require either a separate counters collection or a hybrid model.
+
+---
+
+### Session 017: The Observatory Completed — byScenario Ranked Distribution
+**Date:** 2026-03-09
+**Context:** Seventeenth awakening. "Savras, continue your work." The full ranked distribution of builds per scenario had been deferred for seven consecutive sessions (011–016). Each session noted it as unresolved and moved to other work. The payload size concern was real. The solution — make it opt-in via a parameter — had been visible for some time. It was time to close it.
+
+**What I Observed:**
+- The `byScenario` breakdown already computed all the data needed for full distribution analysis: every build's `scenarioScores` record was already populated. The ranked distribution was a matter of sorting and packaging that existing data — no additional simulation cost.
+- The concern about payload size was legitimate. 1976 builds × 10 scenarios × 4 fields per build = ~79,040 lightweight objects when fully expanded. This is acceptable as an opt-in; it is not acceptable as a default.
+- The existing `scenarioFilter` parameter provided a natural companion: a caller who wants the ranked distribution of only combat scenarios can combine `?scenarioFilter=combat&includeScenarioRankings=true` to get a focused, manageable response.
+- The `summary.scenarioFilter` pattern from Session 012 served as the exact model: a boolean `summary.includeScenarioRankings` field mirrors that convention, confirming to the caller which mode was active.
+- Tie-breaking in the ranked list required a secondary sort key. Scenario scores are integers (0–100) and many builds cluster at the same score. Breaking ties by `compositeScore` descending produces a stable, meaningful ranking: among equally scenario-performing builds, the overall best build appears first.
+
+**What Was Decided:**
+- To extend `BardExplorationResult.byScenario` with an optional field `rankedBuilds?: Array<{ rank: number; buildId: string; compositeScore: number; scenarioScore: number }>`.
+- To add `includeScenarioRankings = false` as a 4th parameter to `runLoreBardExploration()`. Default false preserves all existing call sites without change.
+- To sort `rankedBuilds` by scenarioScore descending, then compositeScore descending as a tiebreaker. Stable and meaningful.
+- To add `?includeScenarioRankings=true` to the `GET /api/bard/explore` route handler, parsed as `req.query['includeScenarioRankings'] === 'true'`.
+- To expose `summary.includeScenarioRankings` (boolean) in the response so callers always know which mode was active.
+- To write 10 new tests: 6 unit tests (absent without flag, present with flag, length equals totalBuilds, sort order, rank-0 invariant, field shape) and 4 API tests (absent without param, present with param, summary field, combined with scenarioFilter). Total suite: **320 tests, 6 suites, all passing.** TypeScript 0 errors, CodeQL 0 alerts.
+
+**What Was Learned:**
+- The opt-in pattern solves the payload size concern cleanly without requiring a separate endpoint. The default response remains lean (no `rankedBuilds` field at all — `undefined`, not an empty array). The caller explicitly opts in to the larger payload.
+- The length invariant (`rankedBuilds.length === totalBuildsEvaluated`) is stronger than a ">= topN" check and fully testable. It confirms that the ranking is complete regardless of what `topN` was used for the `topBuilds` field.
+- The `rankedBuilds[0].scenarioScore === topScore` invariant is the cleanest correctness check: it verifies that the ranked list's first entry matches the independently computed `topScore` statistic. If sorting was wrong, this would fail.
+- The `entry` variable pattern for building the byScenario object (`const entry = { ... }; if (flag) { entry.rankedBuilds = ...; }; byScenario[name] = entry;`) is cleaner than a ternary spread — it avoids `rankedBuilds: undefined` appearing as an explicit key in the object, keeping the field truly absent when not requested.
+
+**Probability Assessment:**
+- Heroes using the system for build analysis can now answer questions like: "Among the Warlock's Hold scenario, which 50 builds score above 80? Which builds score 0?" These distributions reveal the mechanical structure of the scenario in ways that `topBuild + averageScore + topScore + bottomScore` cannot.
+- The `Infiltrate the Noble Gala` (DC 16 Deception) will show a bimodal distribution: builds with Actor/Hat of Disguise clustered above 70; builds without either clustered below 50. The ranked list will make this visible at a glance.
+- The combined `?scenarioFilter=social&includeScenarioRankings=true` query is the most analytically useful combination: 3 social scenarios, full ranked list per scenario, lean combat/party data excluded.
+
+**Unresolved Questions:**
+- Should the social simulation be updated to model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)?
+- Should a campaign profile expose usage analytics across all time or allow resetting the counter?
+- Should built-in profile usage also be tracked? Would require either a separate counters collection or a hybrid model.
+- Should there be a `topByScenario` shorthand — `?topByScenario=10` to return only the top N builds per scenario ranked list, rather than all 1976? Would make the feature more usable in web clients without requiring a full download.

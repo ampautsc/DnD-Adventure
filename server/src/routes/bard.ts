@@ -734,17 +734,25 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  *                When provided, only entries whose scenarioCategory matches are returned
  *                in byScenario. topBuilds and other breakdowns are unaffected.
  *                Useful for focused analysis without the full 10-scenario payload.
+ *   - includeScenarioRankings (boolean, optional, default false): When "true", each
+ *                byScenario entry includes a `rankedBuilds` array — a lightweight
+ *                ranking of every evaluated build by that scenario's score (descending).
+ *                Each element has rank, buildId, compositeScore, and scenarioScore.
+ *                Enables full distribution analysis (e.g. "how many builds score >80?").
+ *                Increases response payload size significantly; omit for lean responses.
  *
  * Response includes:
- *   - summary: build count, iterations, fixed subclass, scoringWeightsUsed, and
- *              scenarioFilter (the applied filter, or null when not provided)
+ *   - summary: build count, iterations, fixed subclass, scoringWeightsUsed,
+ *              scenarioFilter (applied filter or null), and
+ *              includeScenarioRankings (true/false)
  *   - topBuilds: ranked array of the best N builds (each build includes scenarioScores)
  *   - bySpecies: best build + average score per species
  *   - byFeatCombination: best build + average score per feat combo
  *   - byMagicItems: best build + average score per item pair
  *   - byScenario: per-scenario analytics (topBuild, averageScore, topScore, bottomScore,
- *                 scenarioCategory) across the 10 scenarios (4 combat, 3 social, 3 party
- *                 support), filtered to the requested category if scenarioFilter was given.
+ *                 scenarioCategory, and optionally rankedBuilds) across the 10 scenarios
+ *                 (4 combat, 3 social, 3 party support), filtered to the requested
+ *                 category if scenarioFilter was given.
  *                 High variance in a scenario indicates strong build differentiation.
  *
  * NOTE: This is a computationally heavy endpoint. Default configuration evaluates
@@ -769,6 +777,8 @@ router.get('/explore', async (req: Request, res: Response) => {
       ? (rawFilter as 'combat' | 'social' | 'partySupport')
       : undefined;
 
+    const includeScenarioRankings = req.query['includeScenarioRankings'] === 'true';
+
     // Resolve weights: saved DB profile → code profile → default
     let weightsArg: ScoringWeights | string | undefined = profile;
     if (profileId && mongoose.isValidObjectId(profileId)) {
@@ -783,7 +793,7 @@ router.get('/explore', async (req: Request, res: Response) => {
       }
     }
 
-    const result = runLoreBardExploration(iterations, topN, weightsArg);
+    const result = runLoreBardExploration(iterations, topN, weightsArg, includeScenarioRankings);
 
     // Apply scenario category filter to byScenario (presentation layer)
     const filteredByScenario = scenarioFilter
@@ -799,6 +809,7 @@ router.get('/explore', async (req: Request, res: Response) => {
       summary: {
         ...result.summary,
         scenarioFilter: scenarioFilter ?? null,
+        includeScenarioRankings,
       },
       byScenario: filteredByScenario,
     });
