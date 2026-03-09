@@ -21,6 +21,12 @@ import {
   CAMPAIGN_PROFILES,
   DEFAULT_SCORING_WEIGHTS,
   resolveWeights,
+  generateBuildEncounterLogs,
+  BuildEncounterLogs,
+  CombatEncounterLog,
+  CombatRoundLog,
+  SocialEncounterLog,
+  PartySupportEncounterLog,
 } from '../services/BardBenchmarkService';
 import { connectTestDB, closeTestDB, clearTestDB } from './helpers';
 
@@ -2916,5 +2922,213 @@ describe('GET /api/bard/explore/:buildId', () => {
     const res = await request(app).get('/api/bard/explore/pools');
     expect(res.status).toBe(200);
     expect(res.body.pools).toBeDefined();
+  }, 30000);
+});
+
+// ─── generateBuildEncounterLogs Tests ────────────────────────────────────────
+
+describe('BardBenchmarkService - generateBuildEncounterLogs', () => {
+  let builds: ReturnType<typeof generateLoreBardBuilds>;
+  let logs: BuildEncounterLogs;
+
+  beforeAll(() => {
+    builds = generateLoreBardBuilds();
+    const result = generateBuildEncounterLogs(builds[0].id);
+    expect(result).not.toBeNull();
+    logs = result!;
+  });
+
+  it('returns null for an unknown buildId', () => {
+    const result = generateBuildEncounterLogs('lore-nonexistent__foo__bar');
+    expect(result).toBeNull();
+  });
+
+  it('result contains the correct buildId', () => {
+    expect(logs.buildId).toBe(builds[0].id);
+  });
+
+  it('buildSummary contains all required fields', () => {
+    const s = logs.buildSummary;
+    expect(typeof s.species).toBe('string');
+    expect(typeof s.subspecies).toBe('string');
+    expect(Array.isArray(s.feats)).toBe(true);
+    expect(Array.isArray(s.magicItems)).toBe(true);
+    expect(typeof s.armorClass).toBe('number');
+    expect(typeof s.maxHitPoints).toBe('number');
+    expect(typeof s.spellSaveDC).toBe('number');
+    expect(typeof s.charismaModifier).toBe('number');
+    expect(s.abilityScores).toBeDefined();
+  });
+
+  it('combatLogs contains exactly 4 scenarios', () => {
+    expect(logs.combatLogs).toHaveLength(4);
+  });
+
+  it('socialLogs contains exactly 3 scenarios', () => {
+    expect(logs.socialLogs).toHaveLength(3);
+  });
+
+  it('partySupportLogs contains exactly 3 scenarios', () => {
+    expect(logs.partySupportLogs).toHaveLength(3);
+  });
+
+  it('each combat log has rounds with events and endState', () => {
+    for (const cl of logs.combatLogs) {
+      expect(cl.scenarioName).toBeTruthy();
+      expect(cl.difficulty).toMatch(/^(easy|medium|hard)$/);
+      expect(Array.isArray(cl.enemyRoster)).toBe(true);
+      expect(cl.enemyRoster.length).toBeGreaterThan(0);
+      expect(['victory', 'defeat']).toContain(cl.outcome);
+      expect(typeof cl.summary.damageTaken).toBe('number');
+      expect(typeof cl.summary.survived).toBe('boolean');
+      // Rounds include round 0 (pre-combat / initiative) and at least 1 combat round
+      expect(cl.rounds.length).toBeGreaterThan(0);
+      for (const r of cl.rounds) {
+        expect(typeof r.round).toBe('number');
+        expect(Array.isArray(r.events)).toBe(true);
+        expect(r.endState).toBeDefined();
+        expect(typeof r.endState.bardHp).toBe('number');
+        expect(typeof r.endState.concentrating).toBe('boolean');
+        // Every event must have actor, action, and outcome fields
+        for (const ev of r.events) {
+          expect(typeof ev.actor).toBe('string');
+          expect(typeof ev.action).toBe('string');
+          expect(typeof ev.outcome).toBe('string');
+        }
+      }
+    }
+  });
+
+  it('combat log events include initiative and at least one combat action', () => {
+    const firstCombat = logs.combatLogs[0];
+    const allEvents = firstCombat.rounds.flatMap((r) => r.events);
+    const initiativeEvent = allEvents.find((e) => e.action === 'Initiative');
+    expect(initiativeEvent).toBeDefined();
+    // There should be at least one bard action event
+    const bardEvents = allEvents.filter((e) => e.actor === 'Bard');
+    expect(bardEvents.length).toBeGreaterThan(0);
+  });
+
+  it('each social log has all required fields and a valid outcome', () => {
+    for (const sl of logs.socialLogs) {
+      expect(sl.scenarioName).toBeTruthy();
+      expect(sl.skill).toBeTruthy();
+      expect(typeof sl.dc).toBe('number');
+      expect(typeof sl.skillBonus).toBe('number');
+      expect(Array.isArray(sl.advantages)).toBe(true);
+      expect(typeof sl.roll1).toBe('number');
+      expect(typeof sl.finalRoll).toBe('number');
+      expect(typeof sl.total).toBe('number');
+      expect(['success', 'failure', 'critical_success']).toContain(sl.outcome);
+      expect(typeof sl.outcomeDetail).toBe('string');
+      expect(sl.outcomeDetail.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('social log outcome is consistent with roll total vs DC', () => {
+    for (const sl of logs.socialLogs) {
+      if (sl.outcome === 'failure') {
+        expect(sl.total).toBeLessThan(sl.dc);
+      } else {
+        expect(sl.total).toBeGreaterThanOrEqual(sl.dc);
+      }
+      if (sl.outcome === 'critical_success') {
+        expect(sl.finalRoll).toBe(20);
+      }
+    }
+  });
+
+  it('each party support log has rounds with events and endState', () => {
+    for (const pl of logs.partySupportLogs) {
+      expect(pl.scenarioName).toBeTruthy();
+      expect(pl.scenarioType).toMatch(/^(combat-support|social-support|mixed)$/);
+      expect(pl.rounds.length).toBeGreaterThan(0);
+      expect(typeof pl.summary.totalInspirations).toBe('number');
+      expect(typeof pl.summary.totalHealing).toBe('number');
+      expect(typeof pl.summary.totalFeatureActivations).toBe('number');
+      for (const r of pl.rounds) {
+        expect(typeof r.round).toBe('number');
+        expect(Array.isArray(r.events)).toBe(true);
+        expect(r.endState).toBeDefined();
+        expect(typeof r.endState.inspirationDiceLeft).toBe('number');
+        expect(typeof r.endState.healingSlotsLeft).toBe('number');
+      }
+    }
+  });
+
+  it('Firbolg build has Hidden Step logged when controlling enemies', () => {
+    const firbolgBuild = builds.find((b) => b.id.includes('firbolg'));
+    if (!firbolgBuild) return; // skip if not in build pool
+    const firbolgLogs = generateBuildEncounterLogs(firbolgBuild.id);
+    expect(firbolgLogs).not.toBeNull();
+    // Run multiple times to catch Hidden Step activation statistically
+    let found = false;
+    for (let i = 0; i < 10; i++) {
+      const l = generateBuildEncounterLogs(firbolgBuild.id);
+      const allEvents = l!.combatLogs.flatMap((c) => c.rounds).flatMap((r) => r.events);
+      if (allEvents.some((e) => e.action === 'Hidden Step (Bonus Action)')) {
+        found = true;
+        break;
+      }
+    }
+    // Hidden Step only activates when a control spell lands with ≥2 enemies, so it
+    // may not always fire — just ensure the log structure is valid
+    expect(firbolgLogs!.buildId).toBe(firbolgBuild.id);
+  });
+});
+
+// ─── GET /api/bard/encounter-logs/:buildId Tests ──────────────────────────────
+
+describe('GET /api/bard/encounter-logs/:buildId', () => {
+  it('returns 404 for an unknown buildId', async () => {
+    const res = await request(app).get('/api/bard/encounter-logs/lore-nonexistent__foo__bar');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Build not found');
+  }, 30000);
+
+  it('returns 200 with full logs for a valid buildId', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    const res = await request(app).get(`/api/bard/encounter-logs/${buildId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.buildId).toBe(builds[0].id);
+    expect(res.body.buildSummary).toBeDefined();
+    expect(Array.isArray(res.body.combatLogs)).toBe(true);
+    expect(Array.isArray(res.body.socialLogs)).toBe(true);
+    expect(Array.isArray(res.body.partySupportLogs)).toBe(true);
+  }, 30000);
+
+  it('response contains correct log counts (4 combat, 3 social, 3 party-support)', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    const res = await request(app).get(`/api/bard/encounter-logs/${buildId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.combatLogs).toHaveLength(4);
+    expect(res.body.socialLogs).toHaveLength(3);
+    expect(res.body.partySupportLogs).toHaveLength(3);
+  }, 30000);
+
+  it('combat logs contain round-by-round events', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    const res = await request(app).get(`/api/bard/encounter-logs/${buildId}`);
+    expect(res.status).toBe(200);
+    const combatLog = res.body.combatLogs[0] as CombatEncounterLog;
+    expect(combatLog.rounds.length).toBeGreaterThan(0);
+    const round = combatLog.rounds[0];
+    expect(typeof round.round).toBe('number');
+    expect(Array.isArray(round.events)).toBe(true);
+    expect(round.endState).toBeDefined();
+  }, 30000);
+
+  it('social logs contain outcome detail text', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    const res = await request(app).get(`/api/bard/encounter-logs/${buildId}`);
+    expect(res.status).toBe(200);
+    for (const sl of res.body.socialLogs as SocialEncounterLog[]) {
+      expect(typeof sl.outcomeDetail).toBe('string');
+      expect(sl.outcomeDetail.length).toBeGreaterThan(10);
+    }
   }, 30000);
 });

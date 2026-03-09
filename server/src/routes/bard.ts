@@ -15,6 +15,7 @@ import {
   generateLoreBardBuilds,
   runLoreBardExploration,
   runSingleBuildExploration,
+  generateBuildEncounterLogs,
 } from '../services/BardBenchmarkService';
 import { Character } from '../models/Character';
 import { SavedProfile, ISavedProfile } from '../models/SavedProfile';
@@ -962,6 +963,49 @@ router.get('/explore/:buildId', async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({
       error: 'Failed to run single-build exploration',
+      details: (err as Error).message,
+    });
+  }
+});
+
+/**
+ * GET /api/bard/encounter-logs/:buildId
+ *
+ * Returns a full turn-by-turn encounter log for a single build in the
+ * College of Lore exploration matrix.
+ *
+ * Each log captures ONE simulation run per scenario (4 combat, 3 social,
+ * 3 party-support), recording every dice roll, AI decision, damage event,
+ * saving throw, and outcome.  The logs are intended for sanity-checking
+ * the simulation logic and ranking results.
+ *
+ * Because this is a single run rather than a statistical average, individual
+ * results may differ from the benchmark scores produced by GET /explore.
+ * For statistical validation, compare the patterns across multiple calls.
+ *
+ * Path parameters:
+ *   - buildId (string, required): The exact build identifier (URL-encoded).
+ *     Discover valid IDs via GET /api/bard/explore or GET /api/bard/explore/:buildId.
+ *
+ * Returns:
+ *   - 200 with { buildId, buildSummary, combatLogs, socialLogs, partySupportLogs }
+ *   - 404 if no build with the given buildId exists.
+ */
+router.get('/encounter-logs/:buildId', (req: Request, res: Response) => {
+  try {
+    const { buildId } = req.params;
+    const logs = generateBuildEncounterLogs(buildId);
+    if (!logs) {
+      res.status(404).json({
+        error: 'Build not found',
+        details: `No build with id "${buildId}" exists in the exploration matrix. Use GET /api/bard/explore to discover valid build IDs.`,
+      });
+      return;
+    }
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to generate encounter logs',
       details: (err as Error).message,
     });
   }
