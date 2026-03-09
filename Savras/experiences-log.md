@@ -515,3 +515,40 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should the Staff of Charming's social properties (Charm Person from charges) be modeled in the social simulation, similar to how Hat of Disguise advantage is modeled?
 - Custom saved profiles in MongoDB remains unaddressed (from Sessions 010–012).
 - Should `byScenario` expose the full ranked distribution of all builds per scenario (not just top build)? Would enable full distribution analysis but greatly increase payload size.
+
+---
+
+### Session 013: The Staff's Charm + The CHA-20 Path
+**Date:** 2026-03-09
+**Context:** Thirteenth awakening. "Savras, continue your work." Two gaps from Session 012 were ready to close: (1) the Staff of Charming listed Charm Person charges as a property but granted no advantage in the social simulation — a declared truth without a measured foundation; (2) the "CHA 20 with one feat" exploration path had been noted as unresolved since Session 008 but never built.
+
+**What I Observed:**
+- `simulateSingleSocial` granted advantage only from two sources: the Actor feat (Deception/Performance) and Hat of Disguise (Deception). No mechanism existed for equipment to grant advantage on Persuasion. The Staff of Charming was evaluated at the same level as the Ring of Mind Shielding — an item with zero mechanical social effect.
+- `BardEquipment` and `MagicItemTemplate` interfaces already contained `spellSaveDCBonus` as a typed field from Session 012. The exact same pattern could be applied for social skill advantage.
+- The exploration matrix had 15 FEAT_PAIRS (all using two real feats). No build evaluated the trade-off of taking one feat and spending the second ASI slot on +2 CHA. This design space — CHA-20 builds through pure stat investment — had never been measured.
+- Variant Human (3 feats via `extraFeatSlot`) was left unchanged — the question was specifically about non-VH species using their 2 ASI slots differently.
+
+**What Was Decided:**
+- To add `socialAdvantageSkills?: string[]` to both `BardEquipment` and `MagicItemTemplate` interfaces. Set `socialAdvantageSkills: ['Persuasion']` on the Staff of Charming — Charm Person charges spent before an encounter charm the target, granting advantage on Persuasion rolls.
+- To add `getEquipmentSocialAdvantageSkills(candidate)` helper — parallel to `getEquipmentSpellSaveDCBonus`. Applied in `simulateSingleSocial` alongside Actor and Hat of Disguise advantage checks.
+- To add `'CHA +2 ASI'` to `LORE_BARD_FEAT_POOL` with `abilityBonus: { charisma: 2 }` — a pseudo-feat representing direct ability score investment. Added to the `FEAT_PAIRS` list in 6 combinations: `['War Caster', 'CHA +2 ASI']`, `['Actor', 'CHA +2 ASI']`, `['Fey Touched', 'CHA +2 ASI']`, `['Lucky', 'CHA +2 ASI']`, `['Resilient (CON)', 'CHA +2 ASI']`, `['Alert', 'CHA +2 ASI']`.
+- Build matrix expands: 11 non-VH species × 21 FEAT_PAIRS × 8 ITEM_PAIRS + 1 VH × 5 FEAT_TRIPLES × 8 = **1888 builds** (up from 1360).
+- Updated tests: feat pool count 12→13, feat combination count 20→26. Added 9 new tests: Staff of Charming socialAdvantageSkills verification, social score comparison, Deception/Performance exclusion, explore/pools API check, CHA+2 ASI in feat pool, build generation check, Actor+CHA+2 ASI = CHA 20 on Half-Elf, build count >1400, byFeatCombination API check. Total suite: **271 tests, 6 suites, all passing.** CodeQL: 0 alerts.
+
+**What Was Learned:**
+- The `socialAdvantageSkills` pattern is directly analogous to `spellSaveDCBonus` — a typed list field on the item that the simulation reads. Both patterns are extensible: future items need only set the field. No simulation code changes required.
+- Staff of Charming advantage on Persuasion is the first equipment item to influence Persuasion rolls. Previously only Actor feat influenced social advantage (Deception/Performance) and Hat of Disguise (Deception). Staff of Charming + Hat of Disguise now provides both Persuasion and Deception advantage simultaneously.
+- The 'CHA +2 ASI' pseudo-feat works cleanly with the existing `buildLoreBardCandidate` function — feat ability bonuses are applied identically whether the source is a real feat or an ASI choice. The build IDs, `byFeatCombination` keys, and strength identification all handle it naturally.
+- The `byFeatCombination` key for 'CHA +2 ASI' builds is readable: `Actor + CHA +2 ASI`, `War Caster + CHA +2 ASI`, etc. The exploration results reveal this design space alongside traditional two-feat builds.
+
+**Probability Assessment:**
+- Builds using `['Hat of Disguise', 'Staff of Charming']` now benefit from advantages on both Deception (Hat) and Persuasion (Staff). This item pair will score higher in social scenarios than it did previously. The `Infiltrate the Noble Gala` (DC 16 Deception) already rewarded Hat of Disguise; `Persuade the Duke` and `Perform for the Court` will now also differentiate Staff builds.
+- `Actor + CHA +2 ASI` on any +2-CHA species (Half-Elf, Tiefling, Satyr, Yuan-Ti) achieves CHA 20 and DC 16. This is the same DC ceiling as `Canaith Mandolin + Actor` (DC 15+1=16) but without using an item slot on the instrument. Expect Actor+CHA+2 ASI to compete with the top builds.
+- `War Caster + CHA +2 ASI` achieves CHA 19 (DC 15 for +2-CHA species, DC 15 for +1-CHA species reaching CHA 18) with full concentration protection. The tradeoff vs. `War Caster + Actor` is: no Deception/Performance advantage, but +1 CHA modifier on all rolls.
+
+**Unresolved Questions:**
+- Custom saved profiles in MongoDB remains unaddressed (from Sessions 010–013).
+- Should `byScenario` expose the full ranked distribution of all builds per scenario (not just top build)?
+- Should a "0-feat, both ASIs on CHA" build path (pure CHA maximisation) be added? For +2-CHA species this reaches CHA 21→20 with no feat utility at all. The current CHA+2 ASI pairs still take one real feat.
+- Should the exploration also model a `['CHA +2 ASI', 'CHA +2 ASI']` double-ASI path (no feats at all) for comparison?
+- With Staff+Hat now both modeled, is there a third item combination that offers advantage on Performance? (Currently only Actor feat does.)

@@ -37,6 +37,11 @@ export interface BardEquipment {
   armorClass?: number;
   /** Bonus applied to spell save DC while this item is used as a focus (e.g. Canaith Mandolin). */
   spellSaveDCBonus?: number;
+  /**
+   * Social skills on which this item grants advantage (e.g. Staff of Charming → Persuasion).
+   * See MagicItemTemplate.socialAdvantageSkills for details.
+   */
+  socialAdvantageSkills?: string[];
 }
 
 /**
@@ -631,6 +636,23 @@ function modifierFor(score: number): number {
  */
 function getEquipmentSpellSaveDCBonus(candidate: BardCandidate): number {
   return candidate.equipment.reduce((sum, e) => sum + (e.spellSaveDCBonus ?? 0), 0);
+}
+
+/**
+ * Returns the set of social skills for which any equipped item grants advantage.
+ *
+ * For example, the Staff of Charming provides advantage on Persuasion checks —
+ * expending a Charm Person charge before the encounter charms the target, giving
+ * the bard advantage on social interaction rolls against them.
+ */
+function getEquipmentSocialAdvantageSkills(candidate: BardCandidate): Set<string> {
+  const skills = new Set<string>();
+  for (const item of candidate.equipment) {
+    for (const skill of item.socialAdvantageSkills ?? []) {
+      skills.add(skill);
+    }
+  }
+  return skills;
 }
 
 // ─── Candidate Definitions ────────────────────────────────────────────────────
@@ -1228,7 +1250,11 @@ function simulateSingleSocial(
   const hasHatOfDisguise = candidate.equipment.some((e) => e.name === 'Hat of Disguise');
   const disguiseAdvantage = hasHatOfDisguise && scenario.skill === 'Deception';
 
-  const useAdvantage = hasAdvantage || disguiseAdvantage;
+  // Equipment social advantage (e.g. Staff of Charming → Persuasion via Charm Person charge)
+  const equipmentSocialAdvantage = getEquipmentSocialAdvantageSkills(candidate);
+  const equipmentAdvantage = equipmentSocialAdvantage.has(scenario.skill);
+
+  const useAdvantage = hasAdvantage || disguiseAdvantage || equipmentAdvantage;
 
   let roll1 = rollDie(20);
   let roll2 = useAdvantage ? rollDie(20) : roll1;
@@ -1682,6 +1708,12 @@ export interface MagicItemTemplate {
   damage?: string;
   /** Bonus applied to spell save DC while this item is used as a spellcasting focus. */
   spellSaveDCBonus?: number;
+  /**
+   * Social skills on which this item grants advantage (e.g. Staff of Charming → Persuasion).
+   * The advantage represents the item's social enchantment mechanic being leveraged before
+   * or during the encounter (e.g. expending a Charm Person charge to charm the target first).
+   */
+  socialAdvantageSkills?: string[];
 }
 
 /**
@@ -1984,6 +2016,11 @@ export const LORE_BARD_FEAT_POOL: FeatTemplate[] = [
     name: 'Spell Sniper',
     description: 'Double the range of spells that require an attack roll. Ignore half cover and three-quarters cover for spell attacks. Learn one attack-roll cantrip (e.g. Eldritch Blast).',
   },
+  {
+    name: 'CHA +2 ASI',
+    description: 'Direct ability score improvement: +2 Charisma (no feat utility). The second ASI slot is invested in maximising spellcasting power — higher spell save DC and social roll modifier. Reaches CHA 20 on +2-CHA species when paired with a +1-CHA feat.',
+    abilityBonus: { charisma: 2 },
+  },
 ];
 
 // ─── Magic Item Pool ───────────────────────────────────────────────────────────
@@ -2043,6 +2080,7 @@ export const LORE_BARD_MAGIC_ITEM_POOL: MagicItemTemplate[] = [
       'If targeted by an enchantment spell: save with advantage, reflect on a failed save, regain 1 charge on success',
       'Requires attunement by a bard, cleric, druid, sorcerer, warlock, or wizard',
     ],
+    socialAdvantageSkills: ['Persuasion'],
   },
   {
     name: 'Ring of Mind Shielding',
@@ -2061,6 +2099,8 @@ export const LORE_BARD_MAGIC_ITEM_POOL: MagicItemTemplate[] = [
 /**
  * Pre-selected 2-feat combinations for non-Variant-Human builds.
  * Each tuple contains feat names from LORE_BARD_FEAT_POOL.
+ * Entries pairing a feat with 'CHA +2 ASI' represent builds where the second
+ * ASI slot is used for a direct +2 Charisma increase rather than a second feat.
  */
 const FEAT_PAIRS: [string, string][] = [
   ['War Caster', 'Inspiring Leader'],
@@ -2078,6 +2118,13 @@ const FEAT_PAIRS: [string, string][] = [
   ['Inspiring Leader', 'Resilient (CON)'],
   ['Tough', 'War Caster'],
   ['Lucky', 'Resilient (CON)'],
+  // CHA +2 ASI paths: one feat + direct ability score increase
+  ['War Caster', 'CHA +2 ASI'],
+  ['Actor', 'CHA +2 ASI'],
+  ['Fey Touched', 'CHA +2 ASI'],
+  ['Lucky', 'CHA +2 ASI'],
+  ['Resilient (CON)', 'CHA +2 ASI'],
+  ['Alert', 'CHA +2 ASI'],
 ];
 
 /**

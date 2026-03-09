@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–012)
+## Testing (Verified Sessions 002–013)
 
-- 262 tests across 6 suites, all passing as of Session 012.
+- 271 tests across 6 suites, all passing as of Session 013.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -129,15 +129,16 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 012)
+## Known Gaps (as of Session 013)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
 - Bardic Inspiration dice are not modeled as a short-rest resource in the combat simulation — each combat simulation starts fresh. This slightly underestimates the advantage of high-CHA candidates across longer adventuring days.
 - Enemy re-saves on concentration spells are not modeled (e.g., Hypnotic Pattern targets re-save at end of each turn). Currently, enemies remain controlled until concentration breaks via incoming damage.
 - `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
-- Staff of Charming's social properties (Charm Person from charges) are not modeled in the social simulation — the item is listed in the magic item pool but only its attunement flavor is tracked; no mechanical advantage is granted in social encounters.
+- ~~Staff of Charming's social properties (Charm Person from charges) are not modeled~~ — **Resolved in Session 013.** `socialAdvantageSkills: ['Persuasion']` set on the Staff; `getEquipmentSocialAdvantageSkills()` applies it in `simulateSingleSocial`.
 - Custom saved profiles in MongoDB has not been implemented — campaign profiles remain code-only constants in `BardBenchmarkService.ts`.
+- No "0-feat, both ASIs on CHA" build path — the double ASI path (reaching CHA 21→20 with no feat utility) remains unevaluated. Current CHA+2 ASI pairs always include one real feat.
 
 ## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
 
@@ -196,11 +197,11 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&scenarioFilter=...`; returns `scoringWeightsUsed` and `scenarioFilter` (null when absent) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided), `scenarioScores` per build |
 | GET | `/api/bard/scoring-profiles` | Returns all campaign profiles with full weight configurations |
 
-### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–010)
+### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–013)
 
 **Build Matrix:**
-- 12 species options × (15 feat pairs + 5 Variant Human triples) × 8 magic item pairs = **1920 builds**
-- Default iterations: 25 per scenario → ~1920 builds evaluated in ~2s
+- 11 non-VH species × 21 feat pairs × 8 magic item pairs + 1 VH × 5 feat triples × 8 = **1888 builds** (Session 013)
+- Default iterations: 25 per scenario → ~1888 builds evaluated in ~3s
 - Max iterations cap for exploration route: **50** (reduced from 200 in Session 009 due to larger matrix)
 - `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
 - `runLoreBardExploration(iterations, topN, weights?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied; each `BardBuildResult` includes `scenarioScores: Record<string, number>` (per-scenario scores for all 10 scenarios)
@@ -211,7 +212,7 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 
 **Species Pool (12, as of Session 009):**
 - Half-Elf (Standard), Half-Elf (Drow-Descent), Tiefling (Standard), Tiefling (Glasya), Variant Human (3 feats), Lightfoot Halfling (Lucky), Protector Aasimar, Wood Elf
-- **NEW:** Firbolg (Hidden Step), Eladrin (Fey Step), Satyr (Magic Resistance), Yuan-Ti Pureblood (Magic Resistance + Poison Immunity)
+- **Added Session 009:** Firbolg (Hidden Step), Eladrin (Fey Step), Satyr (Magic Resistance), Yuan-Ti Pureblood (Magic Resistance + Poison Immunity)
 
 **Species Combat Traits (mechanically simulated, Session 009):**
 - **Hidden Step (Firbolg):** Once per combat, bonus action → invisible for 1 round. Enemies attack with disadvantage (MIN of 2d20). Activated after control spell established. Bard skips weapon attack to maintain stealth.
@@ -222,11 +223,20 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 1. Bandit Ambush (easy) — 2 bandits, HP 11, AC 12
 2. Gnoll War Band (medium) — 3 gnolls, HP 22, AC 15
 3. Undead Horde (hard) — 4 skeletons + 2 skeleton archers, HP 13, AC 13
-4. **NEW: Warlock's Hold (hard)** — 1 warlock (HP 32, AC 13, spellSaveDC 14, 40% Hold Person chance) + 2 cultists. Tests Magic Resistance mechanically.
+4. **Added Session 009: Warlock's Hold (hard)** — 1 warlock (HP 32, AC 13, spellSaveDC 14, 40% Hold Person chance) + 2 cultists. Tests Magic Resistance mechanically.
 
-**Feat Pool (12):** War Caster, Alert, Inspiring Leader, Lucky, Resilient (CON), Actor (+1 CHA), Fey Touched (+1 CHA), Shadow Touched (+1 CHA), Telekinetic (+1 CHA), Skilled, Tough, Spell Sniper
+**Feat Pool (13, as of Session 013):** War Caster, Alert, Inspiring Leader, Lucky, Resilient (CON), Actor (+1 CHA), Fey Touched (+1 CHA), Shadow Touched (+1 CHA), Telekinetic (+1 CHA), Skilled, Tough, Spell Sniper, **CHA +2 ASI** (direct +2 CHA investment, no feat utility — added Session 013)
 
-**Magic Item Pool (8):** Cloak of Protection, Hat of Disguise, +1 Rapier, Boots of Elvenkind, Periapt of Proof against Poison, Instrument of Bards (Canaith Mandolin, **+1 spell save DC** — now mechanically modeled via `spellSaveDCBonus: 1`), Staff of Charming, Ring of Mind Shielding
+**Feat Pairs Matrix (21, as of Session 013):**
+- 15 original pairs (all two real feats)
+- **6 new CHA +2 ASI pairs (Session 013):** War Caster+ASI, Actor+ASI, Fey Touched+ASI, Lucky+ASI, Resilient(CON)+ASI, Alert+ASI
+
+**Magic Item Pool (8):** Cloak of Protection, Hat of Disguise, +1 Rapier, Boots of Elvenkind, Periapt of Proof against Poison, Instrument of Bards (Canaith Mandolin, **+1 spell save DC** via `spellSaveDCBonus: 1`), Staff of Charming (**Persuasion advantage** via `socialAdvantageSkills: ['Persuasion']` — added Session 013), Ring of Mind Shielding
+
+**Social Advantage Sources (as of Session 013):**
+- Actor feat → Deception + Performance advantage
+- Hat of Disguise → Deception advantage (Disguise Self)
+- Staff of Charming → Persuasion advantage (Charm Person charge expended before encounter)
 
 ### Exploration Findings (Session 008, 50 iterations)
 
@@ -290,12 +300,13 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 
 - ~~Should the Instrument of the Bards (Canaith Mandolin) +1 to spell save DC be modeled?~~ — **Resolved in Session 012.** `spellSaveDCBonus: 1` is now on the item; `getEquipmentSpellSaveDCBonus()` applies it in combat simulation and reported `spellSaveDC`. Builds pairing Canaith + Actor reach DC 16.
 - ~~Should a `?scenarioFilter=combat` parameter be added to `/api/bard/explore` for category-focused analysis?~~ — **Resolved in Session 012.** `?scenarioFilter=combat|social|partySupport` filters `byScenario` to the requested category. `summary.scenarioFilter` reflects the applied filter.
-- Should a "CHA 20 with one feat" build path be added to the exploration? (Uses both ASIs for CHA rather than feats.) DC 16 from CHA alone vs DC 16 from CHA+Mandolin — different feat/item tradeoffs.
+- ~~Should a "CHA 20 with one feat" build path be added to the exploration?~~ — **Resolved in Session 013.** Six new `FEAT_PAIRS` pair core feats with `'CHA +2 ASI'` (direct +2 CHA investment). Actor+CHA+2 ASI on +2-CHA species reaches CHA 20. Exploration matrix: 1888 builds.
+- ~~Should the Staff of Charming's Charm Person charges be modeled in the social simulation?~~ — **Resolved in Session 013.** `socialAdvantageSkills: ['Persuasion']` set on the Staff; `getEquipmentSocialAdvantageSkills()` applies advantage in `simulateSingleSocial`.
+- Should a "0-feat, both ASIs on CHA" build path be added? (Pure CHA maximisation — no feat utility at all, both ASI slots on +2 CHA.) Would reach CHA 21→20 for +2-CHA species. Currently unmodeled.
 - Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
 - Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)? Currently profiles are code-only constants.
 - Should `byScenario` also expose the full ranked distribution of all builds per scenario (not just the top build)? Would enable full distribution analysis but greatly increase response payload size.
-- Should the Staff of Charming's Charm Person charges be modeled in the social simulation (e.g., advantage or bonus on Persuasion in encounters against charisma-susceptible NPCs)?
 
 ---
 
