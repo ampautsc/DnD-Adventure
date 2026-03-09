@@ -2355,12 +2355,16 @@ export function generateLoreBardBuilds(): BardCandidate[] {
  * @param includeScenarioRankings - When true, each `byScenario` entry includes a
  *   `rankedBuilds` array listing every build ranked by that scenario's score (descending).
  *   Useful for full distribution analysis. Omit or set false to keep the response lean.
+ * @param topScenarioRankings - When `includeScenarioRankings` is true, limit each
+ *   `rankedBuilds` array to this many entries (the top N by scenario score).
+ *   `0` (default) returns every build. Ignored when `includeScenarioRankings` is false.
  */
 export function runLoreBardExploration(
   iterationsPerScenario = 25,
   topN = 50,
   weights?: Partial<ScoringWeights> | string,
   includeScenarioRankings = false,
+  topScenarioRankings = 0,
 ): BardExplorationResult {
   const resolvedWeights = resolveWeights(weights);
   const builds = generateLoreBardBuilds();
@@ -2525,12 +2529,15 @@ export function runLoreBardExploration(
             const diff = (b.scenarioScores[scenarioName] ?? 0) - (a.scenarioScores[scenarioName] ?? 0);
             return diff !== 0 ? diff : b.compositeScore - a.compositeScore;
           });
-        entry.rankedBuilds = sorted.map((r, i) => ({
+        const ranked = sorted.map((r, i) => ({
           rank: i + 1,
           buildId: r.buildId,
           compositeScore: r.compositeScore,
           scenarioScore: r.scenarioScores[scenarioName] ?? 0,
         }));
+        entry.rankedBuilds = topScenarioRankings > 0
+          ? ranked.slice(0, topScenarioRankings)
+          : ranked;
       }
 
       byScenario[scenarioName] = entry;

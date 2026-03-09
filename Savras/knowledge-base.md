@@ -201,7 +201,7 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
 | POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
-| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...&includeScenarioRankings=true`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed`, `scenarioFilter` (null when absent), and `includeScenarioRankings` (true/false) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided; optionally with `rankedBuilds` per scenario if `includeScenarioRankings=true`), `scenarioScores` per build |
+| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...&includeScenarioRankings=true&topByScenario=N`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed`, `scenarioFilter` (null when absent), `includeScenarioRankings` (true/false), and `topByScenario` (number|null) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided; optionally with `rankedBuilds` per scenario if `includeScenarioRankings=true`; limited to N entries per scenario if `topByScenario=N`), `scenarioScores` per build |
 | GET | `/api/bard/scoring-profiles` | Returns all 5 built-in campaign profiles with full weight configurations |
 | GET | `/api/bard/profiles` | Returns all profiles: 5 built-in (`isBuiltIn: true`) + any saved custom (`isBuiltIn: false`); custom profiles include `usageCount` and `lastUsedAt` |
 | POST | `/api/bard/profiles` | Saves a new custom profile to MongoDB; requires `name` (string) and `weights.categoryWeights` (combat/social/partySupport ≥0, not all zero); returns profile with `usageCount: 0`, `lastUsedAt: null` |
@@ -216,16 +216,22 @@ All three simulation functions accept optional weights:
 - Default iterations: 25 per scenario → ~1976 builds evaluated in ~3s
 - Max iterations cap for exploration route: **50** (reduced from 200 in Session 009 due to larger matrix)
 - `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
-- `runLoreBardExploration(iterations, topN, weights?, includeScenarioRankings?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied; each `BardBuildResult` includes `scenarioScores: Record<string, number>` (per-scenario scores for all 10 scenarios); when `includeScenarioRankings=true`, each `byScenario` entry also contains `rankedBuilds`
+- `runLoreBardExploration(iterations, topN, weights?, includeScenarioRankings?, topScenarioRankings?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied; each `BardBuildResult` includes `scenarioScores: Record<string, number>` (per-scenario scores for all 10 scenarios); when `includeScenarioRankings=true`, each `byScenario` entry also contains `rankedBuilds`; when `topScenarioRankings > 0`, `rankedBuilds` is limited to that many entries
 - `getLoreBardSpeciesPool()`, `getLoreBardFeatPool()`, `getLoreBardMagicItemPool()` — pool accessors
 
 **byScenario rankedBuilds (Added Session 017):**
 - Opt-in via `?includeScenarioRankings=true` in the route or 4th parameter to `runLoreBardExploration`
 - Each `byScenario` entry gains `rankedBuilds: Array<{ rank: number; buildId: string; compositeScore: number; scenarioScore: number }>`
 - Sorted by scenarioScore descending; ties broken by compositeScore descending
-- Length equals `totalBuildsEvaluated` (all builds ranked, not just topN)
+- Length equals `totalBuildsEvaluated` (all builds ranked, not just topN) unless `topByScenario` is set
 - `rankedBuilds[0].scenarioScore === topScore` invariant holds
 - Omitted by default (default response stays lean); `summary.includeScenarioRankings` boolean always present
+
+**topByScenario rankedBuilds limit (Added Session 018):**
+- `?topByScenario=N` limits each `rankedBuilds` array to the top N builds when `?includeScenarioRankings=true`
+- 5th parameter `topScenarioRankings=0` in `runLoreBardExploration()` (0 = no limit)
+- `summary.topByScenario`: null when rankings are off or no limit set; positive integer when limit is active
+- Opt-in layering: `includeScenarioRankings=true` enables rankings → `topByScenario=N` limits them → `scenarioFilter=combat` limits which scenarios appear. All three compose cleanly.
 
 **Base Stat Block (27-point buy, before species/feat bonuses):**
 STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
@@ -336,8 +342,10 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 - ~~Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)?~~ — **Resolved in Session 015.** `SavedProfile` model + full CRUD at `/api/bard/profiles`. `profileId` param on benchmark/explore loads saved profile weights from DB.
 - ~~Should saved profiles include usage metadata (how many benchmark/explore runs have used each profile)?~~ — **Resolved in Session 016.** `usageCount` (Number, default 0) and `lastUsedAt` (Date, default null) added to `SavedProfile`. Incremented on every successful `profileId` resolution in `/benchmark` and `/explore`.
 - ~~Should `byScenario` also expose the full ranked distribution of all builds per scenario (not just the top build)?~~ — **Resolved in Session 017.** `?includeScenarioRankings=true` adds `rankedBuilds` to every `byScenario` entry. Lightweight objects (rank/buildId/compositeScore/scenarioScore). Opt-in. All 10 scenarios covered. Works with `scenarioFilter`.
+- ~~Should there be a `topByScenario` shorthand — `?topByScenario=N` to return only the top N builds per scenario ranked list?~~ — **Resolved in Session 018.** `?topByScenario=N` (positive integer) limits each `rankedBuilds` to the top N entries when `?includeScenarioRankings=true`. `summary.topByScenario` is the active limit (null when not set or rankings off). 330 tests total.
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
+- Should the exploration allow filtering by species (e.g. `?speciesFilter=half-elf`) to focus `byScenario` and `rankedBuilds` on builds from a specific species group?
 
 ---
 

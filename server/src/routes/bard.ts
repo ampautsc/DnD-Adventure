@@ -740,11 +740,16 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  *                Each element has rank, buildId, compositeScore, and scenarioScore.
  *                Enables full distribution analysis (e.g. "how many builds score >80?").
  *                Increases response payload size significantly; omit for lean responses.
+ *   - topByScenario (integer, optional, default 0 = all): When `includeScenarioRankings`
+ *                is true, limit each `rankedBuilds` array to this many top-scoring builds.
+ *                Useful for web clients that need only the top 5 or 10 per scenario
+ *                without downloading the full ranked list. 0 or omitted returns all builds.
  *
  * Response includes:
  *   - summary: build count, iterations, fixed subclass, scoringWeightsUsed,
- *              scenarioFilter (applied filter or null), and
- *              includeScenarioRankings (true/false)
+ *              scenarioFilter (applied filter or null),
+ *              includeScenarioRankings (true/false), and
+ *              topByScenario (number | null — null when includeScenarioRankings is false)
  *   - topBuilds: ranked array of the best N builds (each build includes scenarioScores)
  *   - bySpecies: best build + average score per species
  *   - byFeatCombination: best build + average score per feat combo
@@ -779,6 +784,13 @@ router.get('/explore', async (req: Request, res: Response) => {
 
     const includeScenarioRankings = req.query['includeScenarioRankings'] === 'true';
 
+    const rawTopByScenario = req.query['topByScenario']
+      ? parseInt(String(req.query['topByScenario']), 10)
+      : 0;
+    const topByScenario = !isNaN(rawTopByScenario) && rawTopByScenario > 0
+      ? rawTopByScenario
+      : 0;
+
     // Resolve weights: saved DB profile → code profile → default
     let weightsArg: ScoringWeights | string | undefined = profile;
     if (profileId && mongoose.isValidObjectId(profileId)) {
@@ -793,7 +805,7 @@ router.get('/explore', async (req: Request, res: Response) => {
       }
     }
 
-    const result = runLoreBardExploration(iterations, topN, weightsArg, includeScenarioRankings);
+    const result = runLoreBardExploration(iterations, topN, weightsArg, includeScenarioRankings, topByScenario);
 
     // Apply scenario category filter to byScenario (presentation layer)
     const filteredByScenario = scenarioFilter
@@ -810,6 +822,7 @@ router.get('/explore', async (req: Request, res: Response) => {
         ...result.summary,
         scenarioFilter: scenarioFilter ?? null,
         includeScenarioRankings,
+        topByScenario: includeScenarioRankings ? (topByScenario > 0 ? topByScenario : null) : null,
       },
       byScenario: filteredByScenario,
     });
