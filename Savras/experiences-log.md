@@ -710,3 +710,41 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should a campaign profile expose usage analytics across all time or allow resetting the counter?
 - Should built-in profile usage also be tracked? Would require either a separate counters collection or a hybrid model.
 - Should there be a `topByScenario` shorthand — `?topByScenario=10` to return only the top N builds per scenario ranked list, rather than all 1976? Would make the feature more usable in web clients without requiring a full download.
+
+---
+
+## Session 018 — topByScenario Parameter
+
+**Date:** 2026-03-09
+**Focus:** Payload reduction for web clients consuming `/api/bard/explore`
+
+**What Prompted This Session:**
+The `?includeScenarioRankings=true` feature (Session 017) provided full distribution analysis but surfaced a practical concern: 1976 builds × 10 scenarios = potentially large payloads for clients that only need the top 5 or 10 builds per scenario. The unresolved question from Session 017 explicitly named this: "Should there be a `topByScenario` shorthand — `?topByScenario=10` to return only the top N builds per scenario ranked list?"
+
+**What I Observed:**
+- The `rankedBuilds` array is already sorted by scenarioScore descending (ties broken by compositeScore). Slicing it to N is a trivial `.slice(0, N)` operation — no re-sorting required.
+- The correct place for the slice is *after* building the full ranked array, so the ranks (1-based integers assigned in `sorted.map((r, i) => ({ rank: i+1, ... }))`) remain accurate for the returned entries. Slicing before numbering would require re-indexing.
+- The `topN` parameter (for `topBuilds`) provided the exact model: `topN > 0 ? allBuilds.slice(0, topN) : allBuilds`. The same pattern applies here: `topScenarioRankings > 0 ? ranked.slice(0, topScenarioRankings) : ranked`.
+- The `summary.topByScenario` field has three valid states: `null` when `includeScenarioRankings=false` (rankings not requested at all), `null` when rankings were requested but no limit was set (return all), and a positive integer when the limit is active. This tri-state design accurately communicates to the caller which mode is running.
+- The parameter name `topByScenario` in the API maps cleanly to `topScenarioRankings` in the service function signature — the distinction is intentional. API names are user-facing and descriptive; parameter names in function signatures prefer conciseness.
+
+**What Was Decided:**
+- To add `topScenarioRankings = 0` as the 5th parameter to `runLoreBardExploration()`. Default 0 = no limit, preserving all existing call sites without change.
+- To slice `rankedBuilds` after ranking when `topScenarioRankings > 0`: `entry.rankedBuilds = topScenarioRankings > 0 ? ranked.slice(0, topScenarioRankings) : ranked`.
+- To parse `?topByScenario=N` in the route handler (positive integer; anything else treated as 0).
+- To expose `summary.topByScenario` as: `includeScenarioRankings ? (topByScenario > 0 ? topByScenario : null) : null`. This conveys both whether rankings were requested and whether a limit was applied.
+- To write 10 new tests: 4 unit tests (no limit returns all, limit=5 returns 5, limited entries are the top 5, limit ignored when rankings are off) and 6 API tests (no limit = full length, topByScenario=5 limits, summary null when rankings off, summary null when rankings on but no limit, summary reflects active limit, combined with scenarioFilter). Total suite: **330 tests, 6 suites, all passing.** TypeScript 0 errors, CodeQL 0 alerts.
+
+**What Was Learned:**
+- The opt-in layering is now three deep: `includeScenarioRankings=true` enables rankings, `topByScenario=N` limits them, `scenarioFilter=combat` limits which scenarios appear. All three compose cleanly because they operate on different axes (whether to include, how many, which scenarios).
+- The `summary` field is the authoritative record of what the response contains. A caller who caches the response can reconstruct what was requested by reading the summary — this is more reliable than reconstructing from the URL parameters.
+- The pattern of testing "limit ignored when prerequisite is false" (`includeScenarioRankings=false` + `topByScenario=5` → `rankedBuilds` absent) is important. It confirms that `topByScenario` is not a standalone toggle; it only activates in the presence of `includeScenarioRankings=true`.
+
+**Probability Assessment:**
+- A web client building a "Top 10 per scenario" leaderboard view can now call `?includeScenarioRankings=true&topByScenario=10` and receive a payload of 100 lightweight objects total (10 scenarios × 10 builds × 4 fields), compared to 79,040 objects without the limit. Response size reduction: ~99%.
+- The combined `?scenarioFilter=social&includeScenarioRankings=true&topByScenario=5` query is the most analytically focused: 3 social scenarios × top-5 builds × 4 fields = 60 objects total.
+
+**Unresolved Questions:**
+- Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
+- Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
+- Should the exploration allow filtering by species (e.g. `?speciesFilter=half-elf`) to focus byScenario and rankedBuilds on a specific species group?

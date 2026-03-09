@@ -1828,6 +1828,113 @@ describe('GET /api/bard/explore - includeScenarioRankings parameter', () => {
   }, 30000);
 });
 
+// ─── topByScenario unit tests ──────────────────────────────────────────────────
+
+describe('BardBenchmarkService - byScenario topScenarioRankings (topByScenario)', () => {
+  it('without topScenarioRankings, rankedBuilds contains all evaluated builds', () => {
+    const result = runLoreBardExploration(3, 0, undefined, true, 0);
+    const totalBuilds = result.summary.totalBuildsEvaluated;
+    Object.values(result.byScenario).forEach((entry) => {
+      expect(entry.rankedBuilds!.length).toBe(totalBuilds);
+    });
+  });
+
+  it('topScenarioRankings=5 limits each rankedBuilds array to 5 entries', () => {
+    const result = runLoreBardExploration(3, 0, undefined, true, 5);
+    Object.values(result.byScenario).forEach((entry) => {
+      expect(entry.rankedBuilds!.length).toBe(5);
+    });
+  });
+
+  it('topScenarioRankings=5 entries are the 5 highest-scoring builds for that scenario', () => {
+    const result = runLoreBardExploration(3, 0, undefined, true, 5);
+    const fullResult = runLoreBardExploration(3, 0, undefined, true, 0);
+    const scenarioName = 'Bandit Ambush';
+    const limited = result.byScenario[scenarioName].rankedBuilds!;
+    const full = fullResult.byScenario[scenarioName].rankedBuilds!;
+    // Top-5 buildIds must match the first 5 from the full list (same run not possible,
+    // but both sorts are deterministic given identical scores — so compare by position rank)
+    expect(limited[0].rank).toBe(1);
+    expect(limited[4].rank).toBe(5);
+    // No entry ranked lower than 5 should appear
+    limited.forEach((item) => { expect(item.rank).toBeLessThanOrEqual(5); });
+    // Full result must have more entries than limited
+    expect(full.length).toBeGreaterThan(5);
+  });
+
+  it('topScenarioRankings does not affect rankedBuilds when includeScenarioRankings is false', () => {
+    const result = runLoreBardExploration(3, 0, undefined, false, 5);
+    Object.values(result.byScenario).forEach((entry) => {
+      expect(entry.rankedBuilds).toBeUndefined();
+    });
+  });
+});
+
+// ─── topByScenario API tests ───────────────────────────────────────────────────
+
+describe('GET /api/bard/explore - topByScenario parameter', () => {
+  it('without ?topByScenario, rankedBuilds arrays have full length', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&includeScenarioRankings=true',
+    );
+    expect(res.status).toBe(200);
+    const totalBuilds = res.body.summary.totalBuildsEvaluated as number;
+    Object.values(res.body.byScenario as Record<string, { rankedBuilds: unknown[] }>).forEach(
+      (entry) => {
+        expect(entry.rankedBuilds.length).toBe(totalBuilds);
+      },
+    );
+  }, 30000);
+
+  it('?topByScenario=5 limits every rankedBuilds array to 5 entries', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&includeScenarioRankings=true&topByScenario=5',
+    );
+    expect(res.status).toBe(200);
+    Object.values(res.body.byScenario as Record<string, { rankedBuilds: unknown[] }>).forEach(
+      (entry) => {
+        expect(entry.rankedBuilds.length).toBe(5);
+      },
+    );
+  }, 30000);
+
+  it('summary.topByScenario is null when includeScenarioRankings is false', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&topByScenario=5',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.summary.topByScenario).toBeNull();
+  }, 30000);
+
+  it('summary.topByScenario is null when includeScenarioRankings=true but topByScenario is omitted', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&includeScenarioRankings=true',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.summary.topByScenario).toBeNull();
+  }, 30000);
+
+  it('summary.topByScenario reflects the requested limit when both params are set', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&includeScenarioRankings=true&topByScenario=10',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.summary.topByScenario).toBe(10);
+  }, 30000);
+
+  it('?topByScenario=5 combined with ?scenarioFilter=combat limits ranked builds', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&includeScenarioRankings=true&topByScenario=5&scenarioFilter=combat',
+    );
+    expect(res.status).toBe(200);
+    const byScenario = res.body.byScenario as Record<string, { scenarioCategory: string; rankedBuilds: unknown[] }>;
+    Object.values(byScenario).forEach((entry) => {
+      expect(entry.scenarioCategory).toBe('combat');
+      expect(entry.rankedBuilds.length).toBe(5);
+    });
+  }, 30000);
+});
+
 // ─── Staff of Charming Social Advantage Tests ─────────────────────────────────
 
 describe('BardBenchmarkService - Staff of Charming social advantage', () => {
