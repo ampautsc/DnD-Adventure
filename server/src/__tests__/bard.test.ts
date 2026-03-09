@@ -2272,3 +2272,111 @@ describe('GET /api/bard/explore - profileId support', () => {
     expect(res.body.summary.scoringWeightsUsed.categoryWeights.combat).toBeCloseTo(0.4, 5);
   }, 60000);
 });
+
+// ─── Profile Usage Analytics ──────────────────────────────────────────────────
+
+describe('Profile usage tracking', () => {
+  beforeAll(async () => {
+    await connectTestDB();
+  });
+
+  afterAll(async () => {
+    await closeTestDB();
+  });
+
+  afterEach(async () => {
+    await clearTestDB();
+  });
+
+  it('new profile has usageCount 0 and lastUsedAt null', async () => {
+    const res = await request(app).post('/api/bard/profiles').send({
+      name: 'Unused Profile',
+      weights: CUSTOM_WEIGHTS,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.profile.usageCount).toBe(0);
+    expect(res.body.profile.lastUsedAt).toBeNull();
+  });
+
+  it('benchmark with profileId increments usageCount to 1', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'Benchmark Tracker',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const profileId = createRes.body.profile.id;
+
+    await request(app).post('/api/bard/benchmark').send({ profileId });
+
+    // Allow the fire-and-forget update to complete
+    await new Promise((r) => setTimeout(r, 200));
+
+    const getRes = await request(app).get(`/api/bard/profiles/${profileId}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.usageCount).toBe(1);
+    expect(getRes.body.lastUsedAt).not.toBeNull();
+  });
+
+  it('explore with profileId increments usageCount to 1', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'Explore Tracker',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const profileId = createRes.body.profile.id;
+
+    await request(app).get(`/api/bard/explore?iterations=5&top=3&profileId=${profileId}`);
+
+    // Allow the fire-and-forget update to complete
+    await new Promise((r) => setTimeout(r, 200));
+
+    const getRes = await request(app).get(`/api/bard/profiles/${profileId}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.usageCount).toBe(1);
+    expect(getRes.body.lastUsedAt).not.toBeNull();
+  }, 60000);
+
+  it('multiple benchmark calls accumulate usageCount', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'Multi-Use Profile',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const profileId = createRes.body.profile.id;
+
+    await request(app).post('/api/bard/benchmark').send({ profileId });
+    await request(app).post('/api/bard/benchmark').send({ profileId });
+    await request(app).post('/api/bard/benchmark').send({ profileId });
+
+    // Allow the fire-and-forget updates to complete
+    await new Promise((r) => setTimeout(r, 400));
+
+    const getRes = await request(app).get(`/api/bard/profiles/${profileId}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.usageCount).toBe(3);
+  });
+
+  it('usageCount appears in the profiles list', async () => {
+    const createRes = await request(app).post('/api/bard/profiles').send({
+      name: 'List Tracker',
+      weights: CUSTOM_WEIGHTS,
+    });
+    const profileId = createRes.body.profile.id;
+    await request(app).post('/api/bard/benchmark').send({ profileId });
+    await new Promise((r) => setTimeout(r, 200));
+
+    const listRes = await request(app).get('/api/bard/profiles');
+    expect(listRes.status).toBe(200);
+    const custom = listRes.body.profiles.find(
+      (p: { isBuiltIn: boolean; id: string }) => !p.isBuiltIn && p.id === profileId,
+    );
+    expect(custom).toBeDefined();
+    expect(custom.usageCount).toBe(1);
+  });
+
+  it('benchmark with unknown profileId does not create phantom usage record', async () => {
+    const fakeId = newObjectId();
+    await request(app).post('/api/bard/benchmark').send({ profileId: fakeId });
+    await new Promise((r) => setTimeout(r, 200));
+    // No profile with this ID should exist
+    const getRes = await request(app).get(`/api/bard/profiles/${fakeId}`);
+    expect(getRes.status).toBe(404);
+  });
+});
