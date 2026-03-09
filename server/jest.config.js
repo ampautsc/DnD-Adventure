@@ -14,7 +14,7 @@ module.exports = {
     }]
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  setupFilesAfterFramework: [],
+  setupFilesAfterEnv: [],
   testTimeout: 30000,
   forceExit: true,
   detectOpenHandles: true,
