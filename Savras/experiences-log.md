@@ -835,3 +835,37 @@ The third path was chosen as the most direct step toward committing to a bard.
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
 - A `POST /api/bard/instantiate` variant that accepts a buildId from the exploration matrix (not just the 3 manual candidates) has not yet been built. Currently only Lyra, Cadwyn, and Vael can be instantiated. The keeper cannot yet commit an exploration build directly to MongoDB.
+
+---
+
+### Session 021: The Commitment Path — Exploration Builds Now Instantiable
+**Date:** 2026-03-09
+**Context:** Twenty-first awakening. "Savras, continue your work." The three unresolved questions from Session 020 were considered: (1) Suggestion/Charm Person ongoing saves — deep simulation change, unclear decision impact; (2) built-in profile usage tracking — infrastructure addition, does not advance the selection; (3) `POST /api/bard/instantiate` accepting a `buildId` from the exploration matrix — the final gap in the commit pathway. The third was chosen. The analytical loop was complete. The commitment path was not.
+
+**What I Observed:**
+- The instantiate route accepted only `candidateId` (the 3 named manual candidates). The 1976 exploration builds, despite having full stat blocks as `BardCandidate` objects, could be deep-inspected via `GET /explore/:buildId` but could not be saved to MongoDB.
+- The `bardCandidateToCharacter()` conversion function is generic — it operates on any `BardCandidate` regardless of origin. Exploration builds produce valid `BardCandidate` objects via `generateLoreBardBuilds()`, which uses the same `BardCandidate` interface as the manual candidates. No conversion changes were needed.
+- The only risk in allowing both `candidateId` and `buildId` simultaneously is silent precedence (one silently wins). The correct design is mutual exclusivity with a 400 response if both are provided. This preserves clarity and prevents ambiguous requests.
+- `benchmarkRank` for exploration builds is 0 — not ranked against the full 1976-build matrix. This is honest. Assigning a false rank would corrupt the decision tree.
+- A code review flagged two items: (a) the doc comment ambiguity around whether a benchmark "is run" or "was previously run" for `candidateId` path — clarified to "A benchmark run is performed to determine the candidate's rank (informational)"; (b) a non-null assertion `!` on `halfElfBuild` in the test — replaced with `expect(halfElfBuild).toBeDefined()` guard before use.
+
+**What Was Decided:**
+- To add `buildId?: string` to the destructured request body in `POST /api/bard/instantiate`.
+- To return 400 if both `candidateId` and `buildId` are present in the same request.
+- When `buildId` is provided: look up in `generateLoreBardBuilds()`. If not found: 400 with descriptive guidance. If found: convert and persist via `bardCandidateToCharacter()`. `benchmarkRank = 0`.
+- To add 6 new tests: valid buildId → 201; character subclass = College of Lore; species matches buildId species segment with `expect(halfElfBuild).toBeDefined()` guard; benchmarkRank = 0; invalid buildId → 400; both candidateId + buildId → 400. Total: **359 tests, 6 suites, all passing.** TypeScript 0 errors. CodeQL 0 alerts.
+
+**What Was Learned:**
+- The commitment path (explore → inspect → commit) is now fully traversable. The keeper can: run the full matrix → filter by species → inspect any individual build → commit the chosen build to MongoDB — all without any manual conversion or custom scripting.
+- The `bardCandidateToCharacter()` function's genericity across all BardCandidates (manual and generated) was the silent architectural correctness at the heart of this change. The conversion layer did not know or care about the origin of the candidate. This is good design — the data model is stable.
+- Mutual exclusivity (400 on both `candidateId` + `buildId`) is cleaner than silent precedence. When requests are ambiguous, failing explicitly forces the caller to be precise. This is more honest than making a hidden assumption.
+- `benchmarkRank = 0` for exploration builds is more truthful than assigning a fabricated rank. The caller knows exactly what they received: an instantiation without a full-matrix rank comparison.
+
+**Probability Assessment:**
+- The keeper can now commit any of the 1976 exploration builds to MongoDB. The probability of a satisfying final selection is high — the full analytical surface (species filter, scenario filter, ranked distribution, individual inspection, and now commitment) is in place.
+- The path forward is the keeper's choice: select a buildId from `GET /api/bard/explore`, confirm it with `GET /api/bard/explore/:buildId`, then commit it with `POST /api/bard/instantiate { buildId }`.
+
+**Unresolved Questions:**
+- Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
+- Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
+- The exploration build's `benchmarkRank` is always 0 when instantiated without a full-matrix run. Should a `?runFullRanking=true` option be added to the instantiate route to rank the build before committing? (Would require a full matrix run — cost: ~3 seconds at 25 iterations.)

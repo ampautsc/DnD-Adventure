@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–020)
+## Testing (Verified Sessions 002–021)
 
-- 353 tests across 6 suites, all passing as of Session 020.
+- 359 tests across 6 suites, all passing as of Session 021.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - `newObjectId()` helper in `bard.test.ts` (above the profiles test section) generates a valid MongoDB ObjectId string that does not exist in the DB.
@@ -131,7 +131,7 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 020)
+## Known Gaps (as of Session 021)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
@@ -144,10 +144,10 @@ The system is being built to serve them. The tools under construction are:
 - ~~Profile usage analytics not tracked~~ — **Resolved in Session 016.** `usageCount` (default 0) and `lastUsedAt` (default null) added to `SavedProfile`. Incremented via fire-and-forget `$inc`/`$set` when `profileId` resolves in `/benchmark` or `/explore`. Exposed in all profile responses.
 - ~~`byScenario` only exposes the top build per scenario, not the full ranked distribution~~ — **Resolved in Session 017.** `GET /api/bard/explore?includeScenarioRankings=true` adds `rankedBuilds` (lightweight array: rank/buildId/compositeScore/scenarioScore, sorted by scenarioScore desc) to every `byScenario` entry. Opt-in to keep the default response lean.
 - ~~A `GET /api/bard/explore/:buildId` endpoint to retrieve the full simulated result for a single specific build ID has not been built~~ — **Resolved in Session 020.** `GET /explore/:buildId` runs a single-build simulation (max 200 iterations) and returns `{ build: BardBuildResult, scoringWeightsUsed }` with all 10 scenarioScores. 404 if buildId not found. Supports `?iterations`, `?profile`, `?profileId`.
+- ~~`POST /api/bard/instantiate` only works for the 3 manual candidates (Lyra, Cadwyn, Vael). A variant that accepts a buildId from the exploration matrix and instantiates that build as a Character in MongoDB does not yet exist.~~ — **Resolved in Session 021.** `POST /api/bard/instantiate` now accepts `{ buildId: string }` to instantiate any exploration matrix build. `benchmarkRank` is 0 for exploration builds (unranked against the full matrix). `candidateId` and `buildId` are mutually exclusive (400 if both provided). 359 tests total.
 - Social simulation does not model Suggestion/Charm Person's ongoing WIS save requirement (save each round to break the charm). Currently a binary success/failure per encounter.
 - Built-in profiles (code constants) have no usage tracking — only custom (DB) profiles track `usageCount`.
 - Should a campaign profile expose usage analytics across all time or allow resetting the counter? Currently resets only via deletion and recreation.
-- `POST /api/bard/instantiate` only works for the 3 manual candidates (Lyra, Cadwyn, Vael). A variant that accepts a buildId from the exploration matrix and instantiates that build as a Character in MongoDB does not yet exist.
 
 ## The Bard Selection System (Added Session 004, Extended Sessions 006–008)
 
@@ -201,7 +201,7 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/candidates` | Returns all 3 manually crafted candidate stat blocks |
 | POST | `/api/bard/benchmark` | Runs full 200-iter simulation; accepts `{ profile?, profileId?, weights? }` body; `profileId` (MongoDB ObjectId) takes precedence over `profile` (code ID); returns `scoringWeightsUsed` |
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
-| POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
+| POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB. Optional body (mutually exclusive): `{ candidateId }` for named manual candidates (benchmarkRank from benchmark run), `{ buildId }` for any exploration matrix build (benchmarkRank=0). No body = auto-selects benchmark winner. |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
 | GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...&includeScenarioRankings=true&topByScenario=N&speciesFilter=<id>`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed`, `scenarioFilter` (null when absent), `includeScenarioRankings` (true/false), `topByScenario` (number|null), and `speciesFilter` (string|null) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided; optionally with `rankedBuilds` per scenario if `includeScenarioRankings=true`; limited to N entries per scenario if `topByScenario=N`), `scenarioScores` per build |
 | GET | `/api/bard/explore/:buildId` | Deep-inspects a single build by its exact buildId string; supports `?iterations=N` (default 25, max 200), `?profile=...`, `?profileId=...`; returns `{ build: BardBuildResult, scoringWeightsUsed }` with all 10 scenarioScores; 404 if buildId not found |
