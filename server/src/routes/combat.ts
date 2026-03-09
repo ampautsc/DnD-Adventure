@@ -89,8 +89,8 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// POST /:id/action - perform an action in combat
-router.post('/:id/action', async (req: Request, res: Response) => {
+// POST /:id/turn - perform a turn action in combat
+router.post('/:id/turn', async (req: Request, res: Response) => {
   try {
     const { participantId, actionType, targetId, spellName } = req.body;
     if (!participantId || !actionType) {
