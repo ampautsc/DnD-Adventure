@@ -748,3 +748,46 @@ The `?includeScenarioRankings=true` feature (Session 017) provided full distribu
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
 - Should the exploration allow filtering by species (e.g. `?speciesFilter=half-elf`) to focus byScenario and rankedBuilds on a specific species group?
+
+## Session 019 — speciesFilter Parameter
+
+**Date:** 2026-03-09
+**Focus:** Narrowing the build space by species to move closer to selecting a specific bard
+
+**What Prompted This Session:**
+The directive was to "move closer to selecting your bard." The three unresolved questions from Session 018 were considered:
+1. Social simulation ongoing saves (Suggestion/Charm Person) — deep internal simulation change with high implementation cost and unclear decision impact.
+2. Built-in profile usage tracking — infrastructure addition that does not narrow the candidate space.
+3. `?speciesFilter=<id>` on `/explore` — directly narrows the build pool to a single species, reducing both computation and payload while focusing the analysis on the specific species under consideration for final selection.
+
+The third path most directly serves the task. When evaluating which bard to choose, the question "which feats and items are optimal for this specific species?" is the last meaningful axis to isolate. `speciesFilter` enables that query precisely.
+
+**What I Observed:**
+- The build pool is filtered at the start of `runLoreBardExploration()` using `builds.filter(c => c.id.startsWith(\`lore-${speciesFilter}__\`))`. This is correct because the build ID encodes the species ID as its first segment (`lore-${species.id}__${featKey}__${itemKey}`), making the prefix test exact and unambiguous.
+- The filter must happen BEFORE simulation (not at the presentation layer like `scenarioFilter`) because it controls which builds are evaluated. `totalBuildsEvaluated` should reflect only the filtered species — a non-VH species yields 176 builds (22 feat pairs × 8 item pairs), Variant Human yields 40 (5 feat triples × 8).
+- The 6th parameter `speciesFilter?: string` preserves all existing call sites unchanged (no default argument needed because it is `undefined` by default).
+- A local variable name conflict arose: the original code used `const allBuilds = generateLoreBardBuilds()` as the unfiltered pool AND later reassigned `const allBuilds = rawResults` (the scored results). The fix: rename the pool variable to `fullPool` and the filtered variant to `builds`, preserving the later `allBuilds = rawResults` convention.
+- Validation lives in the route layer (checked against `getLoreBardSpeciesPool().map(s => s.id)`). Invalid values produce `undefined`, which the service treats as no filter. This is the same pattern as `scenarioFilter`.
+- `summary.speciesFilter` echoes the service-applied filter (the service sets it; the route's summary spread picks it up automatically).
+
+**What Was Decided:**
+- To add `speciesFilter?: string` as the 6th parameter to `runLoreBardExploration()`.
+- To filter `fullPool` to `builds` when `speciesFilter` is defined: `fullPool.filter(c => c.id.startsWith(\`lore-${speciesFilter}__\`))`.
+- To add `speciesFilter: string | null` to `BardExplorationResult.summary` (returned from the service).
+- To parse `?speciesFilter=<id>` in the route, validate against the 12-species pool, pass to the service as a string or `undefined`.
+- The response summary includes `speciesFilter` automatically via `...result.summary` spread.
+- To write 12 new tests: 6 unit tests (full count without filter, count with filter, topBuilds species correctness, bySpecies key restriction, summary echoes filter, summary null without filter) and 6 API tests (totalBuildsEvaluated limited, topBuilds species check, summary reflects filter, summary null without filter, invalid filter ignored, combined with scenarioFilter). **Total suite: 342 tests, 6 suites, all passing.** TypeScript 0 errors, CodeQL pending.
+
+**What Was Learned:**
+- The opt-in filter layering is now four-dimensional: `speciesFilter` (which species to evaluate) → `scenarioFilter` (which scenario categories to show in byScenario) → `includeScenarioRankings` (whether to add per-scenario ranked lists) → `topByScenario` (how many ranked entries to return). Each operates on a distinct axis without interfering with the others.
+- Species is the most stable selection dimension — unlike feats or items, species is chosen at character creation and never changes. Filtering by species isolates the feat and item dimensions cleanly, making the final selection decision tractable.
+- The distinction between "build-pool filter" (speciesFilter, evaluated before simulation) and "presentation filter" (scenarioFilter, applied after simulation) is architecturally important. Build-pool filters change what is computed; presentation filters change what is displayed. Both are necessary.
+
+**Probability Assessment:**
+- A caller asking "show me only Half-Elf (Standard) builds, top 10 by composite, with combat scenario rankings" can now do: `?speciesFilter=half-elf-standard&top=10&includeScenarioRankings=true&scenarioFilter=combat`. This reduces the evaluated build set from 1976 to 176 (91% reduction) and the response to 4 scenario entries × top-10 ranked builds each = 40 lightweight objects.
+- The keeper can now directly compare feat and item choices within a chosen species lineage — the last analytical step before committing to a bard.
+
+**Unresolved Questions:**
+- Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
+- Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
+- A `GET /api/bard/explore/:buildId` endpoint to retrieve the full simulated result for a single specific build ID has not been built. It would enable deep inspection of any ranked build without re-running the full matrix.

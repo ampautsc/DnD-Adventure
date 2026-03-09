@@ -744,12 +744,21 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  *                is true, limit each `rankedBuilds` array to this many top-scoring builds.
  *                Useful for web clients that need only the top 5 or 10 per scenario
  *                without downloading the full ranked list. 0 or omitted returns all builds.
+ *   - speciesFilter (string, optional): Restrict the build pool to a single species
+ *                by its ID (e.g. `half-elf-standard`, `tiefling-glasya`).
+ *                When provided, only builds whose species matches the given ID are
+ *                evaluated and ranked — reducing both computation time and payload size.
+ *                topBuilds, bySpecies, byFeatCombination, byMagicItems, and byScenario
+ *                all reflect only the filtered species.
+ *                Invalid or unrecognised IDs are silently ignored (all species used).
+ *                Use GET /explore/pools to see all valid species IDs.
  *
  * Response includes:
  *   - summary: build count, iterations, fixed subclass, scoringWeightsUsed,
  *              scenarioFilter (applied filter or null),
- *              includeScenarioRankings (true/false), and
- *              topByScenario (number | null — null when includeScenarioRankings is false)
+ *              includeScenarioRankings (true/false),
+ *              topByScenario (number | null — null when includeScenarioRankings is false), and
+ *              speciesFilter (species ID string | null — null when no filter is applied)
  *   - topBuilds: ranked array of the best N builds (each build includes scenarioScores)
  *   - bySpecies: best build + average score per species
  *   - byFeatCombination: best build + average score per feat combo
@@ -791,6 +800,14 @@ router.get('/explore', async (req: Request, res: Response) => {
       ? rawTopByScenario
       : 0;
 
+    const rawSpeciesFilter = req.query['speciesFilter']
+      ? String(req.query['speciesFilter'])
+      : undefined;
+    const validSpeciesIds = getLoreBardSpeciesPool().map((s) => s.id);
+    const speciesFilter = rawSpeciesFilter && validSpeciesIds.includes(rawSpeciesFilter)
+      ? rawSpeciesFilter
+      : undefined;
+
     // Resolve weights: saved DB profile → code profile → default
     let weightsArg: ScoringWeights | string | undefined = profile;
     if (profileId && mongoose.isValidObjectId(profileId)) {
@@ -805,7 +822,7 @@ router.get('/explore', async (req: Request, res: Response) => {
       }
     }
 
-    const result = runLoreBardExploration(iterations, topN, weightsArg, includeScenarioRankings, topByScenario);
+    const result = runLoreBardExploration(iterations, topN, weightsArg, includeScenarioRankings, topByScenario, speciesFilter);
 
     // Apply scenario category filter to byScenario (presentation layer)
     const filteredByScenario = scenarioFilter
