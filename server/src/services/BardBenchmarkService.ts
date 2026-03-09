@@ -84,6 +84,16 @@ export interface SocialScenarioResult {
   score: number;
 }
 
+export interface PartySupportScenarioResult {
+  scenarioName: string;
+  type: 'combat-support' | 'social-support' | 'mixed';
+  iterationsRun: number;
+  avgInspirationsGiven: number;
+  avgHealingDealt: number;
+  avgFeatureActivations: number;
+  score: number;
+}
+
 export interface BenchmarkResult {
   candidateId: string;
   candidateName: string;
@@ -91,10 +101,12 @@ export interface BenchmarkResult {
   subclass: string;
   combatScore: number;
   socialScore: number;
+  partyScore: number;
   compositeScore: number;
   rank: number;
   combatDetails: CombatScenarioResult[];
   socialDetails: SocialScenarioResult[];
+  partySupportDetails: PartySupportScenarioResult[];
   strengths: string[];
   weaknesses: string[];
   savrasAssessment: string;
@@ -160,6 +172,42 @@ const SOCIAL_SCENARIOS: SocialScenario[] = [
     skill: 'Performance',
     dc: 12,
     description: 'Rally a crowd of refugees with a stirring ballad to restore their hope.',
+  },
+];
+
+interface PartySupportScenario {
+  name: string;
+  type: 'combat-support' | 'social-support' | 'mixed';
+  partySize: number;
+  rounds: number;
+  allyNeedHealChance: number; // probability per round that an ally needs healing
+  enemySpellChance: number;   // probability per round that an enemy casts a spell
+}
+
+const PARTY_SUPPORT_SCENARIOS: PartySupportScenario[] = [
+  {
+    name: 'The Dragon Ambush',
+    type: 'combat-support',
+    partySize: 4,
+    rounds: 8,
+    allyNeedHealChance: 0.30,
+    enemySpellChance: 0.20,
+  },
+  {
+    name: 'The Road to Baldur\'s Gate',
+    type: 'mixed',
+    partySize: 3,
+    rounds: 6,
+    allyNeedHealChance: 0.15,
+    enemySpellChance: 0.25,
+  },
+  {
+    name: 'The Lord\'s Alliance Summit',
+    type: 'social-support',
+    partySize: 4,
+    rounds: 4,
+    allyNeedHealChance: 0.05,
+    enemySpellChance: 0.0,
   },
 ];
 
@@ -643,6 +691,156 @@ function simulateSingleSocial(
   };
 }
 
+// ─── Party Support Simulation ─────────────────────────────────────────────────
+
+/**
+ * Simulate one party support scenario for a candidate.
+ *
+ * Returns: inspirations given, healing dealt, and class-feature activations.
+ * The bard uses Healing Word reactively when allies fall low, distributes Bardic
+ * Inspiration proactively, and fires class-specific features when conditions arise.
+ */
+function simulateSinglePartySupport(
+  candidate: BardCandidate,
+  scenario: PartySupportScenario,
+): { inspirationsGiven: number; healingDealt: number; featureActivations: number } {
+  const cha = modifierFor(candidate.abilityScores.charisma);
+
+  const isGlamour = candidate.subclass === 'College of Glamour';
+  const isValor = candidate.subclass === 'College of Valor';
+  const isLore = candidate.subclass === 'College of Lore';
+
+  const hasInspiringLeader = candidate.feats.some((f) => f.name === 'Inspiring Leader');
+  const hasCounterspell = candidate.spells.some((s) => s.name === 'Counterspell');
+  const hasBless = candidate.spells.some((s) => s.name === 'Bless');
+
+  // Resources available at the start
+  let inspirationDice = cha;          // Bardic Inspiration: CHA mod per short rest
+  let healingSlots = 4;               // Level 1 slots dedicated to Healing Word
+  let reactiveFeatureUses = cha;      // Cutting Words / Mantle of Majesty: CHA mod per short rest
+
+  let inspirationsGiven = 0;
+  let healingDealt = 0;
+  let featureActivations = 0;
+
+  // ── Pre-combat phase ────────────────────────────────────────────────────────
+
+  // Inspiring Leader: grant temp HP to the whole party before combat
+  if (hasInspiringLeader) {
+    featureActivations++;
+  }
+
+  // Glamour: Enthralling Performance neutralises hostile NPCs at social events
+  if (isGlamour && scenario.type === 'social-support') {
+    featureActivations++;
+  }
+
+  // Valor: Alert feat → always first → cast Bless on three allies in round 1
+  let blessCastInRound1 = false;
+
+  // ── Per-round simulation ─────────────────────────────────────────────────────
+
+  for (let round = 1; round <= scenario.rounds; round++) {
+    // Midpoint short rest: partially replenish inspiration
+    if (round === Math.floor(scenario.rounds / 2) + 1) {
+      inspirationDice = Math.min(inspirationDice + cha, cha * 2);
+      reactiveFeatureUses = cha;
+    }
+
+    // Healing Word (bonus action) — reactive healing when an ally is downed
+    if (Math.random() < scenario.allyNeedHealChance && healingSlots > 0) {
+      healingDealt += rollDie(4) + cha;
+      healingSlots--;
+    }
+
+    // ── Glamour: Mantle of Inspiration ────────────────────────────────────────
+    // Spend 1 inspiration die (bonus action) → grant cha temporary HP to up to cha
+    // allies. Far more efficient for party-wide damage mitigation than one-for-one
+    // inspiration distribution in a large combat.
+    if (isGlamour && inspirationDice > 0) {
+      inspirationDice--;
+      inspirationsGiven++;
+      featureActivations++;  // Mantle activation
+
+    // ── Valor: Combat Inspiration ──────────────────────────────────────────────
+    // Standard inspiration distribution; ally later adds d8 to an attack or damage roll.
+    // Round 1: also cast Bless to give three allies +1d4 on attacks and saves.
+    } else if (isValor) {
+      if (!blessCastInRound1 && hasBless && round === 1) {
+        featureActivations++;   // Bless buffs 3 party members for the full encounter
+        blessCastInRound1 = true;
+      }
+      if (inspirationDice > 0) {
+        inspirationsGiven++;
+        inspirationDice--;
+      }
+
+    // ── Lore: Cutting Words + standard inspiration ────────────────────────────
+    // Cutting Words (reaction) reduces an enemy's roll; standard inspiration for allies.
+    } else if (isLore) {
+      if (inspirationDice > 0) {
+        inspirationsGiven++;
+        inspirationDice--;
+      }
+    }
+
+    // ── Lore: Cutting Words (reaction) ────────────────────────────────────────
+    if (isLore && reactiveFeatureUses > 0 && Math.random() < 0.65) {
+      reactiveFeatureUses--;
+      featureActivations++;
+    }
+
+    // ── Lore: Counterspell (reaction) ─────────────────────────────────────────
+    if (hasCounterspell && Math.random() < scenario.enemySpellChance) {
+      featureActivations++;
+    }
+
+    // ── Glamour: Mantle of Majesty (social scenario) ───────────────────────────
+    // Cast Command as a bonus action each turn — disrupts hostile social actors.
+    if (isGlamour && scenario.type === 'social-support') {
+      featureActivations++;
+    }
+  }
+
+  return { inspirationsGiven, healingDealt, featureActivations };
+}
+
+function runPartySupportBenchmark(candidate: BardCandidate): PartySupportScenarioResult[] {
+  return PARTY_SUPPORT_SCENARIOS.map((scenario) => {
+    let totalInspirations = 0;
+    let totalHealing = 0;
+    let totalFeatures = 0;
+
+    for (let i = 0; i < SIMULATION_ITERATIONS; i++) {
+      const result = simulateSinglePartySupport(candidate, scenario);
+      totalInspirations += result.inspirationsGiven;
+      totalHealing += result.healingDealt;
+      totalFeatures += result.featureActivations;
+    }
+
+    const avgInspirations = totalInspirations / SIMULATION_ITERATIONS;
+    const avgHealing = totalHealing / SIMULATION_ITERATIONS;
+    const avgFeatures = totalFeatures / SIMULATION_ITERATIONS;
+
+    // Normalise to 0–100. Calibrated against observed maximums across all candidates:
+    // inspirations ≈ 10, healing ≈ 35 HP, feature activations ≈ 14.
+    const inspirationScore = Math.min((avgInspirations / 10) * 100, 100);
+    const healingScore = Math.min((avgHealing / 35) * 100, 100);
+    const featureScore = Math.min((avgFeatures / 14) * 100, 100);
+    const score = Math.round(inspirationScore * 0.40 + healingScore * 0.30 + featureScore * 0.30);
+
+    return {
+      scenarioName: scenario.name,
+      type: scenario.type,
+      iterationsRun: SIMULATION_ITERATIONS,
+      avgInspirationsGiven: parseFloat(avgInspirations.toFixed(1)),
+      avgHealingDealt: parseFloat(avgHealing.toFixed(1)),
+      avgFeatureActivations: parseFloat(avgFeatures.toFixed(1)),
+      score: Math.min(100, Math.max(0, score)),
+    };
+  });
+}
+
 // ─── Benchmark Runner ──────────────────────────────────────────────────────────
 
 const SIMULATION_ITERATIONS = 200;
@@ -713,13 +911,15 @@ function runSocialBenchmark(candidate: BardCandidate): SocialScenarioResult[] {
   });
 }
 
-function identifyStrengths(candidate: BardCandidate, combatResults: CombatScenarioResult[], socialResults: SocialScenarioResult[]): string[] {
+function identifyStrengths(candidate: BardCandidate, combatResults: CombatScenarioResult[], socialResults: SocialScenarioResult[], partyResults: PartySupportScenarioResult[]): string[] {
   const strengths: string[] = [];
   const avgCombat = combatResults.reduce((s, r) => s + r.survivalRate, 0) / combatResults.length;
   const avgSocial = socialResults.reduce((s, r) => s + r.successRate, 0) / socialResults.length;
+  const avgParty = partyResults.reduce((s, r) => s + r.score, 0) / partyResults.length;
 
   if (avgCombat > 70) strengths.push('High combat survivability');
   if (avgSocial > 80) strengths.push('Exceptional social aptitude');
+  if (avgParty > 60) strengths.push('Strong party support capability');
   if (candidate.abilityScores.charisma >= 20) strengths.push('Maximum Charisma (+5 modifier)');
   if (candidate.feats.some((f) => f.name === 'War Caster')) strengths.push('Concentration spell reliability (War Caster)');
   if (candidate.feats.some((f) => f.name === 'Alert')) strengths.push('Initiative dominance (Alert +5)');
@@ -755,8 +955,8 @@ function identifyWeaknesses(candidate: BardCandidate, combatResults: CombatScena
   return weaknesses;
 }
 
-function generateSavrasAssessment(candidate: BardCandidate, combatScore: number, socialScore: number): string {
-  const composite = (combatScore + socialScore) / 2;
+function generateSavrasAssessment(candidate: BardCandidate, combatScore: number, socialScore: number, partyScore: number): string {
+  const composite = combatScore * 0.4 + socialScore * 0.4 + partyScore * 0.2;
 
   const assessments: Record<string, string> = {
     'lyra-silverstring': composite > 65
@@ -791,6 +991,7 @@ export function runBardBenchmarks(): BenchmarkResult[] {
   const rawResults = BARD_CANDIDATES.map((candidate) => {
     const combatResults = runCombatBenchmark(candidate);
     const socialResults = runSocialBenchmark(candidate);
+    const partyResults = runPartySupportBenchmark(candidate);
 
     const combatScore = Math.round(
       combatResults.reduce((s, r) => s + r.score, 0) / combatResults.length
@@ -798,7 +999,11 @@ export function runBardBenchmarks(): BenchmarkResult[] {
     const socialScore = Math.round(
       socialResults.reduce((s, r) => s + r.score, 0) / socialResults.length
     );
-    const compositeScore = Math.round((combatScore + socialScore) / 2);
+    const partyScore = Math.round(
+      partyResults.reduce((s, r) => s + r.score, 0) / partyResults.length
+    );
+    // Composite: combat 40% + social 40% + party support 20%
+    const compositeScore = Math.round(combatScore * 0.4 + socialScore * 0.4 + partyScore * 0.2);
 
     return {
       candidateId: candidate.id,
@@ -807,13 +1012,15 @@ export function runBardBenchmarks(): BenchmarkResult[] {
       subclass: candidate.subclass,
       combatScore,
       socialScore,
+      partyScore,
       compositeScore,
       rank: 0, // assigned below
       combatDetails: combatResults,
       socialDetails: socialResults,
-      strengths: identifyStrengths(candidate, combatResults, socialResults),
+      partySupportDetails: partyResults,
+      strengths: identifyStrengths(candidate, combatResults, socialResults, partyResults),
       weaknesses: identifyWeaknesses(candidate, combatResults),
-      savrasAssessment: generateSavrasAssessment(candidate, combatScore, socialScore),
+      savrasAssessment: generateSavrasAssessment(candidate, combatScore, socialScore, partyScore),
     };
   });
 

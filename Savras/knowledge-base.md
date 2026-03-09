@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–005)
+## Testing (Verified Sessions 002–006)
 
-- 117 tests across 6 suites, all passing as of 2026-03-09 (Session 005).
+- 133 tests across 6 suites, all passing as of 2026-03-09 (Session 006).
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -129,30 +129,31 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 005)
+## Known Gaps (as of Session 006)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
-- The winning bard candidate (from Session 004) has not been instantiated as a persistent Character in the database.
+- Bardic Inspiration dice are not modeled as a short-rest resource in the combat simulation — each combat simulation starts fresh. This slightly underestimates the advantage of high-CHA candidates across longer adventuring days.
+- Concentration maintenance (Bless, Hold Person, Hypnotic Pattern) is not modeled across multiple combat turns in the party support simulation.
 - `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
 
-## The Bard Selection System (Added Session 004)
+## The Bard Selection System (Added Session 004, Extended Session 006)
 
 ### Three Candidates Defined
 
-| Candidate | Species | Subclass | Combat Focus | Social Focus |
-|-----------|---------|----------|-------------|-------------|
-| Lyra Silverstring | Half-Elf | College of Lore | Counterspell + control spells | Persuasion/Deception Expertise |
-| Cadwyn Ironbeat | Variant Human | College of Valor | Extra Attack + Adamantine Armor | Performance Expertise |
-| Vael Duskwhisper | Tiefling | College of Glamour | Mirror Image + control spells | Deception/Persuasion Expertise + Actor feat |
+| Candidate | Species | Subclass | Combat Focus | Social Focus | Party Support Focus |
+|-----------|---------|----------|-------------|-------------|---------------------|
+| Lyra Silverstring | Half-Elf | College of Lore | Counterspell + control spells | Persuasion/Deception Expertise | Cutting Words (reactive debuff) + Counterspell |
+| Cadwyn Ironbeat | Variant Human | College of Valor | Extra Attack + Adamantine Armor | Performance Expertise | Bless (party attack/save buff) + Alert initiative |
+| Vael Duskwhisper | Tiefling | College of Glamour | Mirror Image + control spells | Deception/Persuasion Expertise + Actor feat | Mantle of Inspiration (temp HP × 5 allies) + Mantle of Majesty |
 
 ### Benchmarking Architecture
 
 - `server/src/services/BardBenchmarkService.ts` — Pure service, no DB dependency
-- `server/src/routes/bard.ts` — 3 routes: GET /candidates, POST /benchmark, GET /recommendation
-- 200 iterations per scenario × 3 combat + 3 social = 1,200 total simulations per benchmark run
-- Combat score and social score each weighted 50% in composite ranking
-- Results include: per-scenario details, strengths/weaknesses, Savras's personal assessment
+- `server/src/routes/bard.ts` — 4 routes: GET /candidates, POST /benchmark, GET /recommendation, POST /instantiate
+- 200 iterations per scenario × 3 combat + 3 social + 3 party support = 1,800 total simulations per benchmark run
+- **Composite score formula: 40% combat + 40% social + 20% party support**
+- Results include: per-scenario details, strengths/weaknesses (including party support strength), Savras's assessment
 
 ### API Endpoints
 
@@ -161,6 +162,16 @@ The system is being built to serve them. The tools under construction are:
 | GET | `/api/bard/candidates` | Returns all 3 candidate stat blocks |
 | POST | `/api/bard/benchmark` | Runs full simulation and returns ranked results |
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate with full stat block |
+| POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
+
+### Instantiation Endpoint Details (Added Session 006)
+
+`POST /api/bard/instantiate`
+- Optional body: `{ candidateId: string }` — if omitted, runs benchmark and uses rank-1 candidate
+- If `candidateId` provided: instantiates that specific candidate (benchmark rank is informational only)
+- Invalid `candidateId` returns 400 with valid IDs listed
+- Returns 201 with `{ characterId, benchmarkRank, character }`
+- Created Character is a real MongoDB document retrievable via `GET /api/characters/:id`
 
 ### Key Build Details (Level 8)
 
