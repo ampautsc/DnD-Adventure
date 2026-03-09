@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–021)
+## Testing (Verified Sessions 002–022)
 
-- 359 tests across 6 suites, all passing as of Session 021.
+- 363 tests across 6 suites, all passing as of Session 022.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - `newObjectId()` helper in `bard.test.ts` (above the profiles test section) generates a valid MongoDB ObjectId string that does not exist in the DB.
@@ -131,7 +131,7 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 021)
+## Known Gaps (as of Session 022)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
@@ -145,6 +145,7 @@ The system is being built to serve them. The tools under construction are:
 - ~~`byScenario` only exposes the top build per scenario, not the full ranked distribution~~ — **Resolved in Session 017.** `GET /api/bard/explore?includeScenarioRankings=true` adds `rankedBuilds` (lightweight array: rank/buildId/compositeScore/scenarioScore, sorted by scenarioScore desc) to every `byScenario` entry. Opt-in to keep the default response lean.
 - ~~A `GET /api/bard/explore/:buildId` endpoint to retrieve the full simulated result for a single specific build ID has not been built~~ — **Resolved in Session 020.** `GET /explore/:buildId` runs a single-build simulation (max 200 iterations) and returns `{ build: BardBuildResult, scoringWeightsUsed }` with all 10 scenarioScores. 404 if buildId not found. Supports `?iterations`, `?profile`, `?profileId`.
 - ~~`POST /api/bard/instantiate` only works for the 3 manual candidates (Lyra, Cadwyn, Vael). A variant that accepts a buildId from the exploration matrix and instantiates that build as a Character in MongoDB does not yet exist.~~ — **Resolved in Session 021.** `POST /api/bard/instantiate` now accepts `{ buildId: string }` to instantiate any exploration matrix build. `benchmarkRank` is 0 for exploration builds (unranked against the full matrix). `candidateId` and `buildId` are mutually exclusive (400 if both provided). 359 tests total.
+- ~~The exploration build's `benchmarkRank` is always 0 when instantiated without a full-matrix run. A `runFullRanking: true` option was absent, meaning the keeper could not obtain the build's true matrix rank at commit time.~~ — **Resolved in Session 022.** `POST /api/bard/instantiate { buildId, runFullRanking: true }` runs the full 1976-build matrix (25 iterations per scenario, ~3 s) and returns the build's actual rank in `benchmarkRank` and the total builds evaluated in `rankedAmong`. Without the flag, behaviour is unchanged (benchmarkRank=0). 363 tests total.
 - Social simulation does not model Suggestion/Charm Person's ongoing WIS save requirement (save each round to break the charm). Currently a binary success/failure per encounter.
 - Built-in profiles (code constants) have no usage tracking — only custom (DB) profiles track `usageCount`.
 - Should a campaign profile expose usage analytics across all time or allow resetting the counter? Currently resets only via deletion and recreation.
@@ -201,7 +202,7 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/candidates` | Returns all 3 manually crafted candidate stat blocks |
 | POST | `/api/bard/benchmark` | Runs full 200-iter simulation; accepts `{ profile?, profileId?, weights? }` body; `profileId` (MongoDB ObjectId) takes precedence over `profile` (code ID); returns `scoringWeightsUsed` |
 | GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
-| POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB. Optional body (mutually exclusive): `{ candidateId }` for named manual candidates (benchmarkRank from benchmark run), `{ buildId }` for any exploration matrix build (benchmarkRank=0). No body = auto-selects benchmark winner. |
+| POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB. Optional body (mutually exclusive): `{ candidateId }` for named manual candidates (benchmarkRank from benchmark run), `{ buildId }` for any exploration matrix build (benchmarkRank=0 by default). Pass `runFullRanking: true` with `buildId` to run the full matrix and receive the build's true rank in `benchmarkRank` and total builds in `rankedAmong`. No body = auto-selects benchmark winner. |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
 | GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...&profileId=...&scenarioFilter=...&includeScenarioRankings=true&topByScenario=N&speciesFilter=<id>`; `profileId` takes precedence over `profile`; returns `scoringWeightsUsed`, `scenarioFilter` (null when absent), `includeScenarioRankings` (true/false), `topByScenario` (number|null), and `speciesFilter` (string|null) in summary, `byScenario` breakdown (filtered by category if `scenarioFilter` provided; optionally with `rankedBuilds` per scenario if `includeScenarioRankings=true`; limited to N entries per scenario if `topByScenario=N`), `scenarioScores` per build |
 | GET | `/api/bard/explore/:buildId` | Deep-inspects a single build by its exact buildId string; supports `?iterations=N` (default 25, max 200), `?profile=...`, `?profileId=...`; returns `{ build: BardBuildResult, scoringWeightsUsed }` with all 10 scenarioScores; 404 if buildId not found |
@@ -357,9 +358,10 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 - ~~Should there be a `topByScenario` shorthand — `?topByScenario=N` to return only the top N builds per scenario ranked list?~~ — **Resolved in Session 018.** `?topByScenario=N` (positive integer) limits each `rankedBuilds` to the top N entries when `?includeScenarioRankings=true`. `summary.topByScenario` is the active limit (null when not set or rankings off). 330 tests total.
 - ~~Should the exploration allow filtering by species (e.g. `?speciesFilter=half-elf`) to focus `byScenario` and `rankedBuilds` on builds from a specific species group?~~ — **Resolved in Session 019.** `?speciesFilter=<id>` filters the build pool before simulation to the named species ID. `summary.speciesFilter` echoes the applied filter. Invalid IDs silently ignored. 342 tests total.
 - ~~A `GET /api/bard/explore/:buildId` endpoint to retrieve the full simulated result for a single specific build ID has not been built. It would enable deep inspection of any ranked build without re-running the full matrix.~~ — **Resolved in Session 020.** `GET /explore/:buildId` + `runSingleBuildExploration()` service function. Returns `{ build: BardBuildResult, scoringWeightsUsed }`. 353 tests total.
+- ~~Should `POST /api/bard/instantiate` accept a buildId from the exploration matrix (in addition to the 3 manual candidateIds)? Currently only Lyra, Cadwyn, and Vael can be committed to MongoDB.~~ — **Resolved in Session 021.** `POST /api/bard/instantiate { buildId }` instantiates any exploration build. benchmarkRank=0. 359 tests total.
+- ~~The exploration build's `benchmarkRank` is always 0 when instantiated without a full-matrix run. Should a `runFullRanking: true` option be added to the instantiate route?~~ — **Resolved in Session 022.** `POST /api/bard/instantiate { buildId, runFullRanking: true }` runs the full matrix and returns the build's actual rank in `benchmarkRank` and `rankedAmong` (total builds). 363 tests total.
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
-- Should `POST /api/bard/instantiate` accept a buildId from the exploration matrix (in addition to the 3 manual candidateIds)? Currently only Lyra, Cadwyn, and Vael can be committed to MongoDB.
 
 ---
 

@@ -607,16 +607,24 @@ router.get('/recommendation', (req: Request, res: Response) => {
  *     which candidate is instantiated). benchmarkRank reflects that rank.
  *   - buildId: string — instantiates any build from the exploration matrix by its
  *     exact buildId (e.g. from GET /api/bard/explore or GET /api/bard/explore/:buildId).
- *     benchmarkRank is 0 (the build is not ranked against the full matrix here).
+ *     By default, benchmarkRank is 0 (the build is not ranked against the full matrix).
+ *     Pass runFullRanking: true to run the full 1976-build matrix (25 iterations per
+ *     scenario, ~3 s) and receive the build's actual rank in benchmarkRank and the
+ *     total builds evaluated in rankedAmong.
  *
  * If neither is provided, the full benchmark is run and the top-ranked manual
  * candidate is instantiated automatically.
  *
- * Returns 201 with { characterId, benchmarkRank, character }.
+ * Returns 201 with { characterId, benchmarkRank, character } plus rankedAmong when
+ * runFullRanking is true.
  */
 router.post('/instantiate', async (req: Request, res: Response) => {
   try {
-    const { candidateId, buildId } = req.body as { candidateId?: string; buildId?: string };
+    const { candidateId, buildId, runFullRanking } = req.body as {
+      candidateId?: string;
+      buildId?: string;
+      runFullRanking?: boolean;
+    };
 
     if (candidateId && buildId) {
       res.status(400).json({
@@ -630,6 +638,7 @@ router.post('/instantiate', async (req: Request, res: Response) => {
 
     let chosenCandidate: BardCandidate | undefined;
     let benchmarkRank = 1;
+    let rankedAmong: number | undefined;
 
     if (buildId) {
       // Exploration matrix build — look up by exact buildId
@@ -642,8 +651,17 @@ router.post('/instantiate', async (req: Request, res: Response) => {
         });
         return;
       }
-      // Exploration builds are not ranked against the full 1976-build matrix here.
-      benchmarkRank = 0;
+
+      if (runFullRanking) {
+        // Run the full matrix (25 iterations, all builds) to obtain the true rank.
+        const explorationResult = runLoreBardExploration(25, 0);
+        const ranked = explorationResult.topBuilds.find((b) => b.buildId === buildId);
+        benchmarkRank = ranked?.rank ?? 0;
+        rankedAmong = explorationResult.summary.totalBuildsEvaluated;
+      } else {
+        // Exploration builds are not ranked against the full matrix here.
+        benchmarkRank = 0;
+      }
     } else if (candidateId) {
       chosenCandidate = candidates.find((c) => c.id === candidateId);
       if (!chosenCandidate) {
@@ -671,6 +689,7 @@ router.post('/instantiate', async (req: Request, res: Response) => {
     res.status(201).json({
       characterId: character._id,
       benchmarkRank,
+      ...(rankedAmong !== undefined && { rankedAmong }),
       character,
     });
   } catch (err) {
