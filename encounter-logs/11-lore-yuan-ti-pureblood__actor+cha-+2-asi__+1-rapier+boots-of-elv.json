@@ -1,0 +1,3062 @@
+{
+  "rank": 11,
+  "compositeScore": 61,
+  "combatScore": 35,
+  "socialScore": 97,
+  "partySupportScore": 41,
+  "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+  "buildSummary": {
+    "species": "Yuan-Ti",
+    "subspecies": "Yuan-Ti Pureblood",
+    "feats": [
+      "Actor",
+      "CHA +2 ASI"
+    ],
+    "magicItems": [
+      "+1 Rapier",
+      "Boots of Elvenkind"
+    ],
+    "abilityScores": {
+      "strength": 8,
+      "dexterity": 14,
+      "constitution": 14,
+      "intelligence": 11,
+      "wisdom": 12,
+      "charisma": 20
+    },
+    "armorClass": 14,
+    "maxHitPoints": 52,
+    "spellSaveDC": 16,
+    "charismaModifier": 5
+  },
+  "combatLogs": [
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "Bandit Ambush",
+      "difficulty": "easy",
+      "enemyRoster": [
+        {
+          "name": "Bandit 1",
+          "hp": 11,
+          "ac": 12,
+          "attackBonus": 3,
+          "damage": "1d6+1"
+        },
+        {
+          "name": "Bandit 2",
+          "hp": 11,
+          "ac": 12,
+          "attackBonus": 3,
+          "damage": "1d6+1"
+        }
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Initiative",
+              "outcome": "No Alert feat: coin-flip initiative — bard won. Bard acts first in round 1."
+            }
+          ],
+          "endState": {
+            "bardHp": 52,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 3,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": 11,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": 11,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 1,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Cast Hold Person (Action)",
+              "outcome": "Bard casts Hold Person (DC 16) targeting 2 of 2 active enemies. Spell attack bonus: +8."
+            },
+            {
+              "actor": "Bandit 1",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 17,
+              "rollTotal": 27,
+              "dc": 16,
+              "success": true,
+              "outcome": "Bandit 1 WIS save: roll 17+10=27 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 13,
+              "rollTotal": 23,
+              "dc": 16,
+              "success": true,
+              "outcome": "Bandit 2 WIS save: roll 13+10=23 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Bard",
+              "action": "Control Spell Failed",
+              "outcome": "All 2 enemies resisted Hold Person. Spell slot spent, no concentration — spell was wasted this encounter."
+            },
+            {
+              "actor": "Bandit 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 6,
+              "rollTotal": 9,
+              "dc": 14,
+              "success": false,
+              "outcome": "Bandit 1 attacks Bard: roll 6+3=9 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 6,
+              "outcome": "Bandit 2 attacks: roll 6+3 — deflected by Mirror Image (mirror check roll: 5 ≤ 6). Mirror Image charges remaining: 2."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 1",
+              "outcome": "Bard HP: 52/52 | Concentrating: false | Breaks: 0 | Mirror Images: 2 | Enemies active/free: 2 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 52,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 2,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": 11,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": 11,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 2,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Bandit 1",
+              "roll": 18,
+              "rollTotal": 24,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 10,
+              "outcome": "Bard attacks Bandit 1: roll 18+6=24 vs AC 12 — HIT. Deals 10 damage. Bandit 1 HP: 1/11."
+            },
+            {
+              "actor": "Bandit 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 20,
+              "rollTotal": 23,
+              "dc": 14,
+              "success": true,
+              "isCrit": true,
+              "damage": 9,
+              "outcome": "Bandit 1 attacks Bard: roll 20+3=23 vs AC 14 — HIT (CRITICAL). Deals 9 damage. Bard HP: 43/52."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 11,
+              "rollTotal": 14,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 7,
+              "outcome": "Bandit 2 attacks Bard: roll 11+3=14 vs AC 14 — HIT. Deals 7 damage. Bard HP: 36/52."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 2",
+              "outcome": "Bard HP: 36/52 | Concentrating: false | Breaks: 0 | Mirror Images: 2 | Enemies active/free: 2 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 36,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 2,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": 1,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": 11,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 3,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Bandit 1",
+              "roll": 9,
+              "rollTotal": 15,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 9,
+              "outcome": "Bard attacks Bandit 1: roll 9+6=15 vs AC 12 — HIT. Deals 9 damage. Bandit 1 HP: 0/11."
+            },
+            {
+              "actor": "Bandit 1",
+              "action": "Defeated",
+              "outcome": "Bandit 1 drops to 0 HP and is defeated."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 17,
+              "rollTotal": 20,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 2,
+              "outcome": "Bandit 2 attacks Bard: roll 17+3=20 vs AC 14 — HIT. Deals 2 damage. Bard HP: 34/52."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 3",
+              "outcome": "Bard HP: 34/52 | Concentrating: false | Breaks: 0 | Mirror Images: 2 | Enemies active/free: 1 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 34,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 2,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": -8,
+                "maxHp": 11,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": 11,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 4,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Bandit 2",
+              "roll": 3,
+              "rollTotal": 9,
+              "dc": 12,
+              "success": false,
+              "outcome": "Bard attacks Bandit 2: roll 3+6=9 vs AC 12 — MISS."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 19,
+              "outcome": "Bandit 2 attacks: roll 19+3 — deflected by Mirror Image (mirror check roll: 4 ≤ 6). Mirror Image charges remaining: 1."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 4",
+              "outcome": "Bard HP: 34/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 1 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 34,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": -8,
+                "maxHp": 11,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": 11,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 5,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Bandit 2",
+              "roll": 9,
+              "rollTotal": 15,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 4,
+              "outcome": "Bard attacks Bandit 2: roll 9+6=15 vs AC 12 — HIT. Deals 4 damage. Bandit 2 HP: 7/11."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 8,
+              "rollTotal": 11,
+              "dc": 14,
+              "success": false,
+              "outcome": "Bandit 2 attacks Bard: roll 8+3=11 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 5",
+              "outcome": "Bard HP: 34/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 1 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 34,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": -8,
+                "maxHp": 11,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": 7,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 6,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Bandit 2",
+              "roll": 3,
+              "rollTotal": 9,
+              "dc": 12,
+              "success": false,
+              "outcome": "Bard attacks Bandit 2: roll 3+6=9 vs AC 12 — MISS."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 17,
+              "rollTotal": 20,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 4,
+              "outcome": "Bandit 2 attacks Bard: roll 17+3=20 vs AC 14 — HIT. Deals 4 damage. Bard HP: 30/52."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 6",
+              "outcome": "Bard HP: 30/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 1 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 30,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": -8,
+                "maxHp": 11,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": 7,
+                "maxHp": 11,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 7,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Bandit 2",
+              "roll": 12,
+              "rollTotal": 18,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 11,
+              "outcome": "Bard attacks Bandit 2: roll 12+6=18 vs AC 12 — HIT. Deals 11 damage. Bandit 2 HP: 0/11."
+            },
+            {
+              "actor": "Bandit 2",
+              "action": "Defeated",
+              "outcome": "Bandit 2 drops to 0 HP and is defeated."
+            },
+            {
+              "actor": "Bard",
+              "action": "Round End",
+              "outcome": "All enemies defeated or controlled. VICTORY."
+            }
+          ],
+          "endState": {
+            "bardHp": 30,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Bandit 1",
+                "hp": -8,
+                "maxHp": 11,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Bandit 2",
+                "hp": -4,
+                "maxHp": 11,
+                "alive": false,
+                "controlled": false
+              }
+            ]
+          }
+        }
+      ],
+      "outcome": "victory",
+      "summary": {
+        "totalRounds": 7,
+        "damageTaken": 22,
+        "concentrationBreaks": 0,
+        "survived": true
+      }
+    },
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "Gnoll War Band",
+      "difficulty": "medium",
+      "enemyRoster": [
+        {
+          "name": "Gnoll 1",
+          "hp": 22,
+          "ac": 15,
+          "attackBonus": 4,
+          "damage": "2d6+2"
+        },
+        {
+          "name": "Gnoll 2",
+          "hp": 22,
+          "ac": 15,
+          "attackBonus": 4,
+          "damage": "2d6+2"
+        },
+        {
+          "name": "Gnoll 3",
+          "hp": 22,
+          "ac": 15,
+          "attackBonus": 4,
+          "damage": "2d6+2"
+        }
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Initiative",
+              "outcome": "No Alert feat: coin-flip initiative — enemies won. Enemies act before the bard in round 1 (bard has no Mirror Image or control spell up yet)."
+            },
+            {
+              "actor": "Gnoll 1",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 8,
+              "rollTotal": 12,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 1 attacks Bard (pre-round): roll 8+4=12 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 1,
+              "rollTotal": 5,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 2 attacks Bard (pre-round): roll 1+4=5 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 18,
+              "rollTotal": 22,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 4,
+              "outcome": "Gnoll 3 attacks Bard (pre-round, no Mirror Image): roll 18+4=22 vs AC 14 — HIT. Deals 4 damage. Bard HP: 48/52."
+            }
+          ],
+          "endState": {
+            "bardHp": 48,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 3,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 1,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Cast Hold Person (Action)",
+              "outcome": "Bard casts Hold Person (DC 16) targeting 3 of 3 active enemies. Spell attack bonus: +8."
+            },
+            {
+              "actor": "Gnoll 1",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 11,
+              "rollTotal": 21,
+              "dc": 16,
+              "success": true,
+              "outcome": "Gnoll 1 WIS save: roll 11+10=21 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 1,
+              "rollTotal": 11,
+              "dc": 16,
+              "success": false,
+              "outcome": "Gnoll 2 WIS save: roll 1+10=11 vs DC 16 — FAIL (incapacitated, under Bard's control)."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 12,
+              "rollTotal": 22,
+              "dc": 16,
+              "success": true,
+              "outcome": "Gnoll 3 WIS save: roll 12+10=22 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Bard",
+              "action": "Concentration Started",
+              "outcome": "Hold Person incapacitated 1/3 enemies. Bard is now concentrating. Remaining free enemies: 2."
+            },
+            {
+              "actor": "Gnoll 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 9,
+              "rollTotal": 13,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 1 attacks Bard: roll 9+4=13 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 3,
+              "rollTotal": 7,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 3 attacks Bard: roll 3+4=7 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "End-of-Round: WIS Save to Break Free from Control",
+              "roll": 15,
+              "rollTotal": 25,
+              "dc": 16,
+              "success": true,
+              "outcome": "Gnoll 2 (controlled) WIS save to break free: roll 15+10=25 vs DC 16 — PASS (breaks free at 22/22 HP and rejoins combat)"
+            },
+            {
+              "actor": "Bard",
+              "action": "Concentration Ends (No Targets)",
+              "outcome": "All controlled enemies have broken free. Concentration spell ends naturally."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 1",
+              "outcome": "Bard HP: 48/52 | Concentrating: false | Breaks: 0 | Mirror Images: 3 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 48,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 3,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 2,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Gnoll 1",
+              "roll": 20,
+              "rollTotal": 26,
+              "dc": 15,
+              "success": true,
+              "isCrit": true,
+              "damage": 17,
+              "outcome": "Bard attacks Gnoll 1: roll 20+6=26 vs AC 15 — HIT (CRITICAL). Deals 17 damage. Gnoll 1 HP: 5/22."
+            },
+            {
+              "actor": "Gnoll 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 6,
+              "rollTotal": 10,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 1 attacks Bard: roll 6+4=10 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 9,
+              "rollTotal": 13,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 2 attacks Bard: roll 9+4=13 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 20,
+              "outcome": "Gnoll 3 attacks: roll 20+4 — deflected by Mirror Image (mirror check roll: 1 ≤ 6). Mirror Image charges remaining: 2."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 2",
+              "outcome": "Bard HP: 48/52 | Concentrating: false | Breaks: 0 | Mirror Images: 2 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 48,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 2,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": 5,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 3,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Gnoll 1",
+              "roll": 4,
+              "rollTotal": 10,
+              "dc": 15,
+              "success": false,
+              "outcome": "Bard attacks Gnoll 1: roll 4+6=10 vs AC 15 — MISS."
+            },
+            {
+              "actor": "Gnoll 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 4,
+              "rollTotal": 8,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 1 attacks Bard: roll 4+4=8 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 19,
+              "outcome": "Gnoll 2 attacks: roll 19+4 — deflected by Mirror Image (mirror check roll: 3 ≤ 6). Mirror Image charges remaining: 1."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 19,
+              "rollTotal": 23,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 10,
+              "outcome": "Gnoll 3 attacks Bard: roll 19+4=23 vs AC 14 — HIT. Deals 10 damage. Bard HP: 38/52."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 3",
+              "outcome": "Bard HP: 38/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 38,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": 5,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 4,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Gnoll 1",
+              "roll": 10,
+              "rollTotal": 16,
+              "dc": 15,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Bard attacks Gnoll 1: roll 10+6=16 vs AC 15 — HIT. Deals 8 damage. Gnoll 1 HP: 0/22."
+            },
+            {
+              "actor": "Gnoll 1",
+              "action": "Defeated",
+              "outcome": "Gnoll 1 drops to 0 HP and is defeated."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 12,
+              "rollTotal": 16,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 12,
+              "outcome": "Gnoll 2 attacks Bard: roll 12+4=16 vs AC 14 — HIT. Deals 12 damage. Bard HP: 26/52."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 18,
+              "rollTotal": 22,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Gnoll 3 attacks Bard: roll 18+4=22 vs AC 14 — HIT. Deals 8 damage. Bard HP: 18/52."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 4",
+              "outcome": "Bard HP: 18/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 2 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 18,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": -3,
+                "maxHp": 22,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 5,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Gnoll 2",
+              "roll": 17,
+              "rollTotal": 23,
+              "dc": 15,
+              "success": true,
+              "isCrit": false,
+              "damage": 6,
+              "outcome": "Bard attacks Gnoll 2: roll 17+6=23 vs AC 15 — HIT. Deals 6 damage. Gnoll 2 HP: 16/22."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 14,
+              "rollTotal": 18,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Gnoll 2 attacks Bard: roll 14+4=18 vs AC 14 — HIT. Deals 8 damage. Bard HP: 10/52."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 5,
+              "rollTotal": 9,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 3 attacks Bard: roll 5+4=9 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 5",
+              "outcome": "Bard HP: 10/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 2 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 10,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": -3,
+                "maxHp": 22,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 16,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 6,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Gnoll 2",
+              "roll": 2,
+              "rollTotal": 8,
+              "dc": 15,
+              "success": false,
+              "outcome": "Bard attacks Gnoll 2: roll 2+6=8 vs AC 15 — MISS."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 12,
+              "rollTotal": 16,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 6,
+              "outcome": "Gnoll 2 attacks Bard: roll 12+4=16 vs AC 14 — HIT. Deals 6 damage. Bard HP: 4/52."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 4,
+              "rollTotal": 8,
+              "dc": 14,
+              "success": false,
+              "outcome": "Gnoll 3 attacks Bard: roll 4+4=8 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 6",
+              "outcome": "Bard HP: 4/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 2 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 4,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": -3,
+                "maxHp": 22,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 16,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 7,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Gnoll 2",
+              "roll": 10,
+              "rollTotal": 16,
+              "dc": 15,
+              "success": true,
+              "isCrit": false,
+              "damage": 7,
+              "outcome": "Bard attacks Gnoll 2: roll 10+6=16 vs AC 15 — HIT. Deals 7 damage. Gnoll 2 HP: 9/22."
+            },
+            {
+              "actor": "Gnoll 2",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 11,
+              "outcome": "Gnoll 2 attacks: roll 11+4 — deflected by Mirror Image (mirror check roll: 2 ≤ 6). Mirror Image charges remaining: 0."
+            },
+            {
+              "actor": "Gnoll 3",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 16,
+              "rollTotal": 20,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 10,
+              "outcome": "Gnoll 3 attacks Bard: roll 16+4=20 vs AC 14 — HIT. Deals 10 damage. Bard HP: -6/52."
+            },
+            {
+              "actor": "Bard",
+              "action": "Death",
+              "outcome": "Bard drops to 0 HP. DEFEAT."
+            }
+          ],
+          "endState": {
+            "bardHp": -6,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 0,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Gnoll 1",
+                "hp": -3,
+                "maxHp": 22,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 2",
+                "hp": 9,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Gnoll 3",
+                "hp": 22,
+                "maxHp": 22,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        }
+      ],
+      "outcome": "defeat",
+      "summary": {
+        "totalRounds": 7,
+        "damageTaken": 58,
+        "concentrationBreaks": 0,
+        "survived": false
+      }
+    },
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "Undead Horde",
+      "difficulty": "hard",
+      "enemyRoster": [
+        {
+          "name": "Skeleton 1",
+          "hp": 13,
+          "ac": 13,
+          "attackBonus": 4,
+          "damage": "1d6+2"
+        },
+        {
+          "name": "Skeleton 2",
+          "hp": 13,
+          "ac": 13,
+          "attackBonus": 4,
+          "damage": "1d6+2"
+        },
+        {
+          "name": "Skeleton 3",
+          "hp": 13,
+          "ac": 13,
+          "attackBonus": 4,
+          "damage": "1d6+2"
+        },
+        {
+          "name": "Skeleton 4",
+          "hp": 13,
+          "ac": 13,
+          "attackBonus": 4,
+          "damage": "1d6+2"
+        },
+        {
+          "name": "Skeleton Archer 1",
+          "hp": 13,
+          "ac": 13,
+          "attackBonus": 4,
+          "damage": "1d6+2"
+        },
+        {
+          "name": "Skeleton Archer 2",
+          "hp": 13,
+          "ac": 13,
+          "attackBonus": 4,
+          "damage": "1d6+2"
+        }
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Initiative",
+              "outcome": "No Alert feat: coin-flip initiative — enemies won. Enemies act before the bard in round 1 (bard has no Mirror Image or control spell up yet)."
+            },
+            {
+              "actor": "Skeleton 1",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 20,
+              "rollTotal": 24,
+              "dc": 14,
+              "success": true,
+              "isCrit": true,
+              "damage": 10,
+              "outcome": "Skeleton 1 attacks Bard (pre-round, no Mirror Image): roll 20+4=24 vs AC 14 — HIT (CRITICAL). Deals 10 damage. Bard HP: 42/52."
+            },
+            {
+              "actor": "Skeleton 2",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 14,
+              "rollTotal": 18,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Skeleton 2 attacks Bard (pre-round, no Mirror Image): roll 14+4=18 vs AC 14 — HIT. Deals 8 damage. Bard HP: 34/52."
+            },
+            {
+              "actor": "Skeleton 3",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 18,
+              "rollTotal": 22,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Skeleton 3 attacks Bard (pre-round, no Mirror Image): roll 18+4=22 vs AC 14 — HIT. Deals 8 damage. Bard HP: 26/52."
+            },
+            {
+              "actor": "Skeleton 4",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 12,
+              "rollTotal": 16,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 5,
+              "outcome": "Skeleton 4 attacks Bard (pre-round, no Mirror Image): roll 12+4=16 vs AC 14 — HIT. Deals 5 damage. Bard HP: 21/52."
+            },
+            {
+              "actor": "Skeleton Archer 1",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 5,
+              "rollTotal": 9,
+              "dc": 14,
+              "success": false,
+              "outcome": "Skeleton Archer 1 attacks Bard (pre-round): roll 5+4=9 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Skeleton Archer 2",
+              "action": "Pre-Round Surprise Attack",
+              "target": "Bard",
+              "roll": 14,
+              "rollTotal": 18,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Skeleton Archer 2 attacks Bard (pre-round, no Mirror Image): roll 14+4=18 vs AC 14 — HIT. Deals 8 damage. Bard HP: 13/52."
+            }
+          ],
+          "endState": {
+            "bardHp": 13,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 3,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Skeleton 1",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton 2",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton 3",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton 4",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton Archer 1",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton Archer 2",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 1,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Cast Hold Person (Action)",
+              "outcome": "Bard casts Hold Person (DC 16) targeting 3 of 6 active enemies. Spell attack bonus: +8."
+            },
+            {
+              "actor": "Skeleton 1",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 16,
+              "rollTotal": 26,
+              "dc": 16,
+              "success": true,
+              "outcome": "Skeleton 1 WIS save: roll 16+10=26 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Skeleton 2",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 11,
+              "rollTotal": 21,
+              "dc": 16,
+              "success": true,
+              "outcome": "Skeleton 2 WIS save: roll 11+10=21 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Skeleton 3",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 1,
+              "rollTotal": 11,
+              "dc": 16,
+              "success": false,
+              "outcome": "Skeleton 3 WIS save: roll 1+10=11 vs DC 16 — FAIL (incapacitated, under Bard's control)."
+            },
+            {
+              "actor": "Bard",
+              "action": "Concentration Started",
+              "outcome": "Hold Person incapacitated 1/3 enemies. Bard is now concentrating. Remaining free enemies: 5."
+            },
+            {
+              "actor": "Skeleton 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 7,
+              "rollTotal": 11,
+              "dc": 14,
+              "success": false,
+              "outcome": "Skeleton 1 attacks Bard: roll 7+4=11 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Skeleton 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 18,
+              "rollTotal": 22,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 4,
+              "outcome": "Skeleton 2 attacks Bard: roll 18+4=22 vs AC 14 — HIT. Deals 4 damage. Bard HP: 9/52."
+            },
+            {
+              "actor": "Bard",
+              "action": "Concentration Saving Throw",
+              "roll": 21,
+              "rollTotal": 21,
+              "dc": 10,
+              "success": true,
+              "outcome": "Concentration check after taking 4 damage (DC 10 = max(10, ⌊4/2⌋)): roll 21 vs DC 10 — SUCCESS (concentration maintained)"
+            },
+            {
+              "actor": "Skeleton 4",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 11,
+              "outcome": "Skeleton 4 attacks: roll 11+4 — deflected by Mirror Image (mirror check roll: 3 ≤ 6). Mirror Image charges remaining: 2."
+            },
+            {
+              "actor": "Skeleton Archer 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 16,
+              "rollTotal": 20,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 6,
+              "outcome": "Skeleton Archer 1 attacks Bard: roll 16+4=20 vs AC 14 — HIT. Deals 6 damage. Bard HP: 3/52."
+            },
+            {
+              "actor": "Bard",
+              "action": "Concentration Saving Throw",
+              "roll": 16,
+              "rollTotal": 16,
+              "dc": 10,
+              "success": true,
+              "outcome": "Concentration check after taking 6 damage (DC 10 = max(10, ⌊6/2⌋)): roll 16 vs DC 10 — SUCCESS (concentration maintained)"
+            },
+            {
+              "actor": "Skeleton Archer 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 18,
+              "rollTotal": 22,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Skeleton Archer 2 attacks Bard: roll 18+4=22 vs AC 14 — HIT. Deals 8 damage. Bard HP: -5/52."
+            },
+            {
+              "actor": "Bard",
+              "action": "Death",
+              "outcome": "Bard drops to 0 HP. DEFEAT."
+            }
+          ],
+          "endState": {
+            "bardHp": -5,
+            "bardHpMax": 52,
+            "concentrating": true,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 2,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Skeleton 1",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton 2",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton 3",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": true
+              },
+              {
+                "name": "Skeleton 4",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton Archer 1",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Skeleton Archer 2",
+                "hp": 13,
+                "maxHp": 13,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        }
+      ],
+      "outcome": "defeat",
+      "summary": {
+        "totalRounds": 1,
+        "damageTaken": 57,
+        "concentrationBreaks": 0,
+        "survived": false
+      }
+    },
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "Warlock's Hold",
+      "difficulty": "hard",
+      "enemyRoster": [
+        {
+          "name": "Warlock 1",
+          "hp": 32,
+          "ac": 13,
+          "attackBonus": 5,
+          "damage": "1d10+3"
+        },
+        {
+          "name": "Cultist 1",
+          "hp": 9,
+          "ac": 12,
+          "attackBonus": 3,
+          "damage": "1d6+1"
+        },
+        {
+          "name": "Cultist 2",
+          "hp": 9,
+          "ac": 12,
+          "attackBonus": 3,
+          "damage": "1d6+1"
+        }
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Initiative",
+              "outcome": "No Alert feat: coin-flip initiative — bard won. Bard acts first in round 1."
+            }
+          ],
+          "endState": {
+            "bardHp": 52,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 3,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": 32,
+                "maxHp": 32,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 1,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Cast Hold Person (Action)",
+              "outcome": "Bard casts Hold Person (DC 16) targeting 3 of 3 active enemies. Spell attack bonus: +8."
+            },
+            {
+              "actor": "Warlock 1",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 13,
+              "rollTotal": 23,
+              "dc": 16,
+              "success": true,
+              "outcome": "Warlock 1 WIS save: roll 13+10=23 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 16,
+              "rollTotal": 26,
+              "dc": 16,
+              "success": true,
+              "outcome": "Cultist 1 WIS save: roll 16+10=26 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "WIS Saving Throw vs Control Spell",
+              "target": "Bard",
+              "roll": 13,
+              "rollTotal": 23,
+              "dc": 16,
+              "success": true,
+              "outcome": "Cultist 2 WIS save: roll 13+10=23 vs DC 16 — PASS (resists, remains active)."
+            },
+            {
+              "actor": "Bard",
+              "action": "Control Spell Failed",
+              "outcome": "All 3 enemies resisted Hold Person. Spell slot spent, no concentration — spell was wasted this encounter."
+            },
+            {
+              "actor": "Warlock 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 19,
+              "rollTotal": 24,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 4,
+              "outcome": "Warlock 1 attacks Bard: roll 19+5=24 vs AC 14 — HIT. Deals 4 damage. Bard HP: 48/52."
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 17,
+              "rollTotal": 20,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 7,
+              "outcome": "Cultist 1 attacks Bard: roll 17+3=20 vs AC 14 — HIT. Deals 7 damage. Bard HP: 41/52."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 6,
+              "rollTotal": 9,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 2 attacks Bard: roll 6+3=9 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 1",
+              "outcome": "Bard HP: 41/52 | Concentrating: false | Breaks: 0 | Mirror Images: 3 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 41,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 3,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": 32,
+                "maxHp": 32,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 2,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Warlock 1",
+              "roll": 7,
+              "rollTotal": 13,
+              "dc": 13,
+              "success": true,
+              "isCrit": false,
+              "damage": 10,
+              "outcome": "Bard attacks Warlock 1: roll 7+6=13 vs AC 13 — HIT. Deals 10 damage. Warlock 1 HP: 22/32."
+            },
+            {
+              "actor": "Warlock 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 14,
+              "rollTotal": 19,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Warlock 1 attacks Bard: roll 14+5=19 vs AC 14 — HIT. Deals 8 damage. Bard HP: 33/52."
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 5,
+              "rollTotal": 8,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 1 attacks Bard: roll 5+3=8 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 1,
+              "rollTotal": 4,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 2 attacks Bard: roll 1+3=4 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 2",
+              "outcome": "Bard HP: 33/52 | Concentrating: false | Breaks: 0 | Mirror Images: 3 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 33,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 3,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": 22,
+                "maxHp": 32,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 3,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Warlock 1",
+              "roll": 18,
+              "rollTotal": 24,
+              "dc": 13,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Bard attacks Warlock 1: roll 18+6=24 vs AC 13 — HIT. Deals 8 damage. Warlock 1 HP: 14/32."
+            },
+            {
+              "actor": "Warlock 1",
+              "action": "Cast Incapacitating Spell (AI: Spellcast)",
+              "target": "Bard",
+              "roll": 20,
+              "rollTotal": 21,
+              "dc": 14,
+              "success": true,
+              "outcome": "Warlock 1 AI decision: cast incapacitating spell (DC 14). Bard WIS save with ADVANTAGE (Magic Resistance): dice=[20,14] take higher=20, +1=21 vs DC 14 — PASS (spell resisted!)"
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 19,
+              "rollTotal": 22,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 5,
+              "outcome": "Cultist 1 attacks Bard: roll 19+3=22 vs AC 14 — HIT. Deals 5 damage. Bard HP: 28/52."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 10,
+              "outcome": "Cultist 2 attacks: roll 10+3 — deflected by Mirror Image (mirror check roll: 3 ≤ 6). Mirror Image charges remaining: 2."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 3",
+              "outcome": "Bard HP: 28/52 | Concentrating: false | Breaks: 0 | Mirror Images: 2 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 28,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 2,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": 14,
+                "maxHp": 32,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 4,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Warlock 1",
+              "roll": 15,
+              "rollTotal": 21,
+              "dc": 13,
+              "success": true,
+              "isCrit": false,
+              "damage": 7,
+              "outcome": "Bard attacks Warlock 1: roll 15+6=21 vs AC 13 — HIT. Deals 7 damage. Warlock 1 HP: 7/32."
+            },
+            {
+              "actor": "Warlock 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 11,
+              "rollTotal": 16,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 4,
+              "outcome": "Warlock 1 attacks Bard: roll 11+5=16 vs AC 14 — HIT. Deals 4 damage. Bard HP: 24/52."
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 2,
+              "rollTotal": 5,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 1 attacks Bard: roll 2+3=5 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 16,
+              "outcome": "Cultist 2 attacks: roll 16+3 — deflected by Mirror Image (mirror check roll: 3 ≤ 6). Mirror Image charges remaining: 1."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 4",
+              "outcome": "Bard HP: 24/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 24,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": 7,
+                "maxHp": 32,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 5,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Warlock 1",
+              "roll": 13,
+              "rollTotal": 19,
+              "dc": 13,
+              "success": true,
+              "isCrit": false,
+              "damage": 6,
+              "outcome": "Bard attacks Warlock 1: roll 13+6=19 vs AC 13 — HIT. Deals 6 damage. Warlock 1 HP: 1/32."
+            },
+            {
+              "actor": "Warlock 1",
+              "action": "Cast Incapacitating Spell (AI: Spellcast)",
+              "target": "Bard",
+              "roll": 13,
+              "rollTotal": 14,
+              "dc": 14,
+              "success": true,
+              "outcome": "Warlock 1 AI decision: cast incapacitating spell (DC 14). Bard WIS save with ADVANTAGE (Magic Resistance): dice=[13,10] take higher=13, +1=14 vs DC 14 — PASS (spell resisted!)"
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 11,
+              "rollTotal": 14,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 6,
+              "outcome": "Cultist 1 attacks Bard: roll 11+3=14 vs AC 14 — HIT. Deals 6 damage. Bard HP: 18/52."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 2,
+              "rollTotal": 5,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 2 attacks Bard: roll 2+3=5 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 5",
+              "outcome": "Bard HP: 18/52 | Concentrating: false | Breaks: 0 | Mirror Images: 1 | Enemies active/free: 3 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 18,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 1,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": 1,
+                "maxHp": 32,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 6,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Warlock 1",
+              "roll": 17,
+              "rollTotal": 23,
+              "dc": 13,
+              "success": true,
+              "isCrit": false,
+              "damage": 9,
+              "outcome": "Bard attacks Warlock 1: roll 17+6=23 vs AC 13 — HIT. Deals 9 damage. Warlock 1 HP: 0/32."
+            },
+            {
+              "actor": "Warlock 1",
+              "action": "Defeated",
+              "outcome": "Warlock 1 drops to 0 HP and is defeated."
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Attack Deflected by Mirror Image (AI: Melee Attack)",
+              "target": "Bard",
+              "roll": 14,
+              "outcome": "Cultist 1 attacks: roll 14+3 — deflected by Mirror Image (mirror check roll: 1 ≤ 6). Mirror Image charges remaining: 0."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 8,
+              "rollTotal": 11,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 2 attacks Bard: roll 8+3=11 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 6",
+              "outcome": "Bard HP: 18/52 | Concentrating: false | Breaks: 0 | Mirror Images: 0 | Enemies active/free: 2 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 18,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 0,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": -8,
+                "maxHp": 32,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 7,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Cultist 1",
+              "roll": 16,
+              "rollTotal": 22,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 8,
+              "outcome": "Bard attacks Cultist 1: roll 16+6=22 vs AC 12 — HIT. Deals 8 damage. Cultist 1 HP: 1/9."
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 12,
+              "rollTotal": 15,
+              "dc": 14,
+              "success": true,
+              "isCrit": false,
+              "damage": 6,
+              "outcome": "Cultist 1 attacks Bard: roll 12+3=15 vs AC 14 — HIT. Deals 6 damage. Bard HP: 12/52."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 6,
+              "rollTotal": 9,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 2 attacks Bard: roll 6+3=9 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 7",
+              "outcome": "Bard HP: 12/52 | Concentrating: false | Breaks: 0 | Mirror Images: 0 | Enemies active/free: 2 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 12,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 0,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": -8,
+                "maxHp": 32,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": 1,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 8,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Cultist 1",
+              "roll": 8,
+              "rollTotal": 14,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 6,
+              "outcome": "Bard attacks Cultist 1: roll 8+6=14 vs AC 12 — HIT. Deals 6 damage. Cultist 1 HP: 0/9."
+            },
+            {
+              "actor": "Cultist 1",
+              "action": "Defeated",
+              "outcome": "Cultist 1 drops to 0 HP and is defeated."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 8,
+              "rollTotal": 11,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 2 attacks Bard: roll 8+3=11 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 8",
+              "outcome": "Bard HP: 12/52 | Concentrating: false | Breaks: 0 | Mirror Images: 0 | Enemies active/free: 1 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 12,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 0,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": -8,
+                "maxHp": 32,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": -5,
+                "maxHp": 9,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 9,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 9,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Cultist 2",
+              "roll": 9,
+              "rollTotal": 15,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 5,
+              "outcome": "Bard attacks Cultist 2: roll 9+6=15 vs AC 12 — HIT. Deals 5 damage. Cultist 2 HP: 4/9."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 7,
+              "rollTotal": 10,
+              "dc": 14,
+              "success": false,
+              "outcome": "Cultist 2 attacks Bard: roll 7+3=10 vs AC 14 — MISS."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 9",
+              "outcome": "Bard HP: 12/52 | Concentrating: false | Breaks: 0 | Mirror Images: 0 | Enemies active/free: 1 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 12,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 0,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": -8,
+                "maxHp": 32,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": -5,
+                "maxHp": 9,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 4,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 10,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Cultist 2",
+              "roll": 3,
+              "rollTotal": 9,
+              "dc": 12,
+              "success": false,
+              "outcome": "Bard attacks Cultist 2: roll 3+6=9 vs AC 12 — MISS."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Melee/Ranged Attack (AI: Attack)",
+              "target": "Bard",
+              "roll": 20,
+              "rollTotal": 23,
+              "dc": 14,
+              "success": true,
+              "isCrit": true,
+              "damage": 5,
+              "outcome": "Cultist 2 attacks Bard: roll 20+3=23 vs AC 14 — HIT (CRITICAL). Deals 5 damage. Bard HP: 7/52."
+            },
+            {
+              "actor": "Round Summary",
+              "action": "End of Round 10",
+              "outcome": "Bard HP: 7/52 | Concentrating: false | Breaks: 0 | Mirror Images: 0 | Enemies active/free: 1 | Enemies controlled: 0"
+            }
+          ],
+          "endState": {
+            "bardHp": 7,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 0,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": -8,
+                "maxHp": 32,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": -5,
+                "maxHp": 9,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 4,
+                "maxHp": 9,
+                "alive": true,
+                "controlled": false
+              }
+            ]
+          }
+        },
+        {
+          "round": 11,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Weapon Attack (Action)",
+              "target": "Cultist 2",
+              "roll": 12,
+              "rollTotal": 18,
+              "dc": 12,
+              "success": true,
+              "isCrit": false,
+              "damage": 4,
+              "outcome": "Bard attacks Cultist 2: roll 12+6=18 vs AC 12 — HIT. Deals 4 damage. Cultist 2 HP: 0/9."
+            },
+            {
+              "actor": "Cultist 2",
+              "action": "Defeated",
+              "outcome": "Cultist 2 drops to 0 HP and is defeated."
+            },
+            {
+              "actor": "Bard",
+              "action": "Round End",
+              "outcome": "All enemies defeated or controlled. VICTORY."
+            }
+          ],
+          "endState": {
+            "bardHp": 7,
+            "bardHpMax": 52,
+            "concentrating": false,
+            "concentrationBreaks": 0,
+            "mirrorImageCharges": 0,
+            "hiddenStepActive": false,
+            "feyStepUsed": false,
+            "enemies": [
+              {
+                "name": "Warlock 1",
+                "hp": -8,
+                "maxHp": 32,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 1",
+                "hp": -5,
+                "maxHp": 9,
+                "alive": false,
+                "controlled": false
+              },
+              {
+                "name": "Cultist 2",
+                "hp": 0,
+                "maxHp": 9,
+                "alive": false,
+                "controlled": false
+              }
+            ]
+          }
+        }
+      ],
+      "outcome": "victory",
+      "summary": {
+        "totalRounds": 11,
+        "damageTaken": 45,
+        "concentrationBreaks": 0,
+        "survived": true
+      }
+    }
+  ],
+  "socialLogs": [
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "Convince the City Guard",
+      "description": "Persuade the gate captain to grant passage without proper documentation.",
+      "skill": "Persuasion",
+      "dc": 14,
+      "skillBonus": 11,
+      "advantages": [],
+      "roll1": 15,
+      "finalRoll": 15,
+      "total": 26,
+      "outcome": "success",
+      "outcomeDetail": "Persuasion check: CHA 5 + expertise (6) = +11. Roll: 15. Total: 15+11=26 vs DC 14 — SUCCESS (26 ≥ 14)."
+    },
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "Infiltrate the Noble Gala",
+      "description": "Masquerade as a court bard to access the noble's private quarters.",
+      "skill": "Deception",
+      "dc": 16,
+      "skillBonus": 11,
+      "advantages": [
+        "Actor feat (advantage on Deception)"
+      ],
+      "roll1": 9,
+      "roll2": 11,
+      "finalRoll": 11,
+      "total": 22,
+      "outcome": "success",
+      "outcomeDetail": "Deception check: CHA 5 + expertise (6) = +11. ADVANTAGE (Actor feat (advantage on Deception)): rolls [9,11] take higher=11. Total: 11+11=22 vs DC 16 — SUCCESS (22 ≥ 16)."
+    },
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "Inspire the Downtrodden",
+      "description": "Rally a crowd of refugees with a stirring ballad to restore their hope.",
+      "skill": "Performance",
+      "dc": 12,
+      "skillBonus": 8,
+      "advantages": [
+        "Actor feat (advantage on Performance)"
+      ],
+      "roll1": 8,
+      "roll2": 3,
+      "finalRoll": 8,
+      "total": 16,
+      "outcome": "success",
+      "outcomeDetail": "Performance check: CHA 5 + proficiency (3) = +8. ADVANTAGE (Actor feat (advantage on Performance)): rolls [8,3] take higher=8. Total: 8+8=16 vs DC 12 — SUCCESS (16 ≥ 12)."
+    }
+  ],
+  "partySupportLogs": [
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "The Dragon Ambush",
+      "scenarioType": "combat-support",
+      "rounds": [
+        {
+          "round": 1,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 4."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 4,
+            "healingSlotsLeft": 4,
+            "reactiveFeatureUsesLeft": 5,
+            "inspirationsGiven": 1,
+            "healingDealt": 0,
+            "featureActivations": 0
+          }
+        },
+        {
+          "round": 2,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Healing Word (Bonus Action)",
+              "amount": 9,
+              "outcome": "Ally is downed — Bard casts Healing Word (bonus action): d4(4)+5=9 HP restored. Spell slots remaining: 3."
+            },
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 3."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 3,
+            "healingSlotsLeft": 3,
+            "reactiveFeatureUsesLeft": 5,
+            "inspirationsGiven": 2,
+            "healingDealt": 9,
+            "featureActivations": 0
+          }
+        },
+        {
+          "round": 3,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 2."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 4."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 2,
+            "healingSlotsLeft": 3,
+            "reactiveFeatureUsesLeft": 4,
+            "inspirationsGiven": 3,
+            "healingDealt": 9,
+            "featureActivations": 1
+          }
+        },
+        {
+          "round": 4,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 1."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 3."
+            },
+            {
+              "actor": "Bard",
+              "action": "Counterspell (Reaction)",
+              "outcome": "Enemy cast a spell — Bard counters it with Counterspell (reaction), negating the spell entirely."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 1,
+            "healingSlotsLeft": 3,
+            "reactiveFeatureUsesLeft": 3,
+            "inspirationsGiven": 4,
+            "healingDealt": 9,
+            "featureActivations": 3
+          }
+        },
+        {
+          "round": 5,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Short Rest",
+              "outcome": "Mid-encounter short rest: Bardic Inspiration replenished from 1 → 6 (max 10). Reactive feature uses reset to 5."
+            },
+            {
+              "actor": "Bard",
+              "action": "Healing Word (Bonus Action)",
+              "amount": 8,
+              "outcome": "Ally is downed — Bard casts Healing Word (bonus action): d4(3)+5=8 HP restored. Spell slots remaining: 2."
+            },
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 5."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 4."
+            },
+            {
+              "actor": "Bard",
+              "action": "Counterspell (Reaction)",
+              "outcome": "Enemy cast a spell — Bard counters it with Counterspell (reaction), negating the spell entirely."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 5,
+            "healingSlotsLeft": 2,
+            "reactiveFeatureUsesLeft": 4,
+            "inspirationsGiven": 5,
+            "healingDealt": 17,
+            "featureActivations": 5
+          }
+        },
+        {
+          "round": 6,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Healing Word (Bonus Action)",
+              "amount": 6,
+              "outcome": "Ally is downed — Bard casts Healing Word (bonus action): d4(1)+5=6 HP restored. Spell slots remaining: 1."
+            },
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 4."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 3."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 4,
+            "healingSlotsLeft": 1,
+            "reactiveFeatureUsesLeft": 3,
+            "inspirationsGiven": 6,
+            "healingDealt": 23,
+            "featureActivations": 6
+          }
+        },
+        {
+          "round": 7,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 3."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 3,
+            "healingSlotsLeft": 1,
+            "reactiveFeatureUsesLeft": 3,
+            "inspirationsGiven": 7,
+            "healingDealt": 23,
+            "featureActivations": 6
+          }
+        },
+        {
+          "round": 8,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 2."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 2,
+            "healingSlotsLeft": 1,
+            "reactiveFeatureUsesLeft": 3,
+            "inspirationsGiven": 8,
+            "healingDealt": 23,
+            "featureActivations": 6
+          }
+        }
+      ],
+      "summary": {
+        "totalInspirations": 8,
+        "totalHealing": 23,
+        "totalFeatureActivations": 6
+      }
+    },
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "The Road to Baldur's Gate",
+      "scenarioType": "mixed",
+      "rounds": [
+        {
+          "round": 1,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 4."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 4."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 4,
+            "healingSlotsLeft": 4,
+            "reactiveFeatureUsesLeft": 4,
+            "inspirationsGiven": 1,
+            "healingDealt": 0,
+            "featureActivations": 1
+          }
+        },
+        {
+          "round": 2,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 3."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 3."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 3,
+            "healingSlotsLeft": 4,
+            "reactiveFeatureUsesLeft": 3,
+            "inspirationsGiven": 2,
+            "healingDealt": 0,
+            "featureActivations": 2
+          }
+        },
+        {
+          "round": 3,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Healing Word (Bonus Action)",
+              "amount": 6,
+              "outcome": "Ally is downed — Bard casts Healing Word (bonus action): d4(1)+5=6 HP restored. Spell slots remaining: 3."
+            },
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 2."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 2."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 2,
+            "healingSlotsLeft": 3,
+            "reactiveFeatureUsesLeft": 2,
+            "inspirationsGiven": 3,
+            "healingDealt": 6,
+            "featureActivations": 3
+          }
+        },
+        {
+          "round": 4,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Short Rest",
+              "outcome": "Mid-encounter short rest: Bardic Inspiration replenished from 2 → 7 (max 10). Reactive feature uses reset to 5."
+            },
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 6."
+            },
+            {
+              "actor": "Bard",
+              "action": "Counterspell (Reaction)",
+              "outcome": "Enemy cast a spell — Bard counters it with Counterspell (reaction), negating the spell entirely."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 6,
+            "healingSlotsLeft": 3,
+            "reactiveFeatureUsesLeft": 5,
+            "inspirationsGiven": 4,
+            "healingDealt": 6,
+            "featureActivations": 4
+          }
+        },
+        {
+          "round": 5,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Healing Word (Bonus Action)",
+              "amount": 6,
+              "outcome": "Ally is downed — Bard casts Healing Word (bonus action): d4(1)+5=6 HP restored. Spell slots remaining: 2."
+            },
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 5."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 5,
+            "healingSlotsLeft": 2,
+            "reactiveFeatureUsesLeft": 5,
+            "inspirationsGiven": 5,
+            "healingDealt": 12,
+            "featureActivations": 4
+          }
+        },
+        {
+          "round": 6,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 4."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 4."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 4,
+            "healingSlotsLeft": 2,
+            "reactiveFeatureUsesLeft": 4,
+            "inspirationsGiven": 6,
+            "healingDealt": 12,
+            "featureActivations": 5
+          }
+        }
+      ],
+      "summary": {
+        "totalInspirations": 6,
+        "totalHealing": 12,
+        "totalFeatureActivations": 5
+      }
+    },
+    {
+      "buildId": "lore-yuan-ti-pureblood__actor+cha-+2-asi__+1-rapier+boots-of-elv",
+      "scenarioName": "The Lord's Alliance Summit",
+      "scenarioType": "social-support",
+      "rounds": [
+        {
+          "round": 1,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 4."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 4."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 4,
+            "healingSlotsLeft": 4,
+            "reactiveFeatureUsesLeft": 4,
+            "inspirationsGiven": 1,
+            "healingDealt": 0,
+            "featureActivations": 1
+          }
+        },
+        {
+          "round": 2,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 3."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 3."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 3,
+            "healingSlotsLeft": 4,
+            "reactiveFeatureUsesLeft": 3,
+            "inspirationsGiven": 2,
+            "healingDealt": 0,
+            "featureActivations": 2
+          }
+        },
+        {
+          "round": 3,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Short Rest",
+              "outcome": "Mid-encounter short rest: Bardic Inspiration replenished from 3 → 8 (max 10). Reactive feature uses reset to 5."
+            },
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 7."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 7,
+            "healingSlotsLeft": 4,
+            "reactiveFeatureUsesLeft": 5,
+            "inspirationsGiven": 3,
+            "healingDealt": 0,
+            "featureActivations": 2
+          }
+        },
+        {
+          "round": 4,
+          "events": [
+            {
+              "actor": "Bard",
+              "action": "Bardic Inspiration (Bonus Action)",
+              "outcome": "Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: 6."
+            },
+            {
+              "actor": "Bard",
+              "action": "Cutting Words (Reaction)",
+              "outcome": "Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: 4."
+            }
+          ],
+          "endState": {
+            "inspirationDiceLeft": 6,
+            "healingSlotsLeft": 4,
+            "reactiveFeatureUsesLeft": 4,
+            "inspirationsGiven": 4,
+            "healingDealt": 0,
+            "featureActivations": 3
+          }
+        }
+      ],
+      "summary": {
+        "totalInspirations": 4,
+        "totalHealing": 0,
+        "totalFeatureActivations": 3
+      }
+    }
+  ]
+}

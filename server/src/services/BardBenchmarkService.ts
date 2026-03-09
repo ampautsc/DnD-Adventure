@@ -197,6 +197,153 @@ export interface CampaignProfile {
   weights: ScoringWeights;
 }
 
+// ─── Encounter Logging Types ──────────────────────────────────────────────────
+
+/**
+ * A single discrete event within one combatant's turn (or a pre-combat phase).
+ * Every decision, roll, and outcome is captured as an event so encounters can
+ * be replayed and validated line by line.
+ */
+export interface CombatTurnEvent {
+  /** Who is acting: "Bard" or the enemy's name (e.g. "Bandit 1", "Warlock 1"). */
+  actor: string;
+  /** Label for the action being taken (e.g. "Weapon Attack", "Control Spell", "Hold Person"). */
+  action: string;
+  /** Target of the action, if applicable. */
+  target?: string;
+  /** Raw d20 result before modifiers. */
+  roll?: number;
+  /** Final total after adding all modifiers (attack bonus, skill bonus, etc.). */
+  rollTotal?: number;
+  /** The DC or AC being tested against, if applicable. */
+  dc?: number;
+  /** Whether the roll succeeded (hit, passed save, etc.). */
+  success?: boolean;
+  /** Whether the roll was a natural 20 critical. */
+  isCrit?: boolean;
+  /** Damage dealt this event. */
+  damage?: number;
+  /** Human-readable description of what happened and why. */
+  outcome: string;
+}
+
+/** State snapshot captured at the end of every round for easy sanity-checking. */
+export interface CombatRoundEndState {
+  bardHp: number;
+  bardHpMax: number;
+  concentrating: boolean;
+  concentrationBreaks: number;
+  mirrorImageCharges: number;
+  hiddenStepActive: boolean;
+  feyStepUsed: boolean;
+  enemies: Array<{
+    name: string;
+    hp: number;
+    maxHp: number;
+    alive: boolean;
+    controlled: boolean;
+  }>;
+}
+
+/** All events and final state for a single round of combat. */
+export interface CombatRoundLog {
+  round: number;
+  events: CombatTurnEvent[];
+  endState: CombatRoundEndState;
+}
+
+/** Full turn-by-turn log for one combat encounter simulation run. */
+export interface CombatEncounterLog {
+  buildId: string;
+  scenarioName: string;
+  difficulty: string;
+  /** Enemies present at the start (names, stat block summary). */
+  enemyRoster: Array<{ name: string; hp: number; ac: number; attackBonus: number; damage: string }>;
+  rounds: CombatRoundLog[];
+  outcome: 'victory' | 'defeat';
+  summary: {
+    totalRounds: number;
+    damageTaken: number;
+    concentrationBreaks: number;
+    survived: boolean;
+  };
+}
+
+/** Full log for one social encounter simulation run. */
+export interface SocialEncounterLog {
+  buildId: string;
+  scenarioName: string;
+  description: string;
+  skill: string;
+  dc: number;
+  skillBonus: number;
+  advantages: string[];
+  roll1: number;
+  roll2?: number;
+  finalRoll: number;
+  total: number;
+  outcome: 'success' | 'failure' | 'critical_success';
+  outcomeDetail: string;
+}
+
+/** A single event in a party-support round (healing, inspiration, feature use). */
+export interface PartySupportTurnEvent {
+  actor: string;
+  action: string;
+  target?: string;
+  amount?: number;
+  outcome: string;
+}
+
+/** Per-round state snapshot for a party-support encounter. */
+export interface PartySupportRoundEndState {
+  inspirationDiceLeft: number;
+  healingSlotsLeft: number;
+  reactiveFeatureUsesLeft: number;
+  inspirationsGiven: number;
+  healingDealt: number;
+  featureActivations: number;
+}
+
+/** Full log for one round in a party-support encounter. */
+export interface PartySupportRoundLog {
+  round: number;
+  events: PartySupportTurnEvent[];
+  endState: PartySupportRoundEndState;
+}
+
+/** Full turn-by-turn log for one party-support encounter simulation run. */
+export interface PartySupportEncounterLog {
+  buildId: string;
+  scenarioName: string;
+  scenarioType: string;
+  rounds: PartySupportRoundLog[];
+  summary: {
+    totalInspirations: number;
+    totalHealing: number;
+    totalFeatureActivations: number;
+  };
+}
+
+/** Bundled encounter logs for all scenarios for a single build. */
+export interface BuildEncounterLogs {
+  buildId: string;
+  buildSummary: {
+    species: string;
+    subspecies: string;
+    feats: string[];
+    magicItems: string[];
+    abilityScores: BardAbilityScores;
+    armorClass: number;
+    maxHitPoints: number;
+    spellSaveDC: number;
+    charismaModifier: number;
+  };
+  combatLogs: CombatEncounterLog[];
+  socialLogs: SocialEncounterLog[];
+  partySupportLogs: PartySupportEncounterLog[];
+}
+
 // ─── Simulation Scenarios ─────────────────────────────────────────────────────
 
 interface CombatEnemy {
@@ -942,6 +1089,7 @@ export const BARD_CANDIDATES: BardCandidate[] = [
 function simulateSingleCombat(
   candidate: BardCandidate,
   scenario: CombatScenario,
+  roundLogs?: CombatRoundLog[],
 ): { survived: boolean; roundsToEnd: number; damageTaken: number; concentrationBreaks: number } {
   const cha = modifierFor(candidate.abilityScores.charisma);
   const dex = modifierFor(candidate.abilityScores.dexterity);
@@ -961,7 +1109,7 @@ function simulateSingleCombat(
       damage: e.damage,
       alive: true,
       controlled: false,  // true = incapacitated by a concentration spell
-      savingThrow: 10, // enemy WIS save modifier (flat 0 bonus vs DC)
+      savingThrow: 0, // enemy WIS save modifier: +0 (flat base, no bonus over DC)
       spellSaveDC: e.spellSaveDC,
       spellUseChance: e.spellUseChance,
     }))
@@ -1026,11 +1174,59 @@ function simulateSingleCombat(
 
   let roundsElapsed = 0;
 
+  // ── Logging helpers ──────────────────────────────────────────────────────────
+  let currentRoundEvents: CombatTurnEvent[] = [];
+  const logEvent = (event: CombatTurnEvent): void => {
+    if (roundLogs) currentRoundEvents.push(event);
+  };
+  const captureEndState = (): CombatRoundEndState => ({
+    bardHp: candidateHp,
+    bardHpMax: candidate.maxHitPoints,
+    concentrating,
+    concentrationBreaks,
+    mirrorImageCharges,
+    hiddenStepActive,
+    feyStepUsed,
+    enemies: enemies.map((e) => ({
+      name: e.name,
+      hp: e.hp,
+      maxHp: e.maxHp,
+      alive: e.alive,
+      controlled: e.controlled,
+    })),
+  });
+  const pushRoundLog = (round: number): void => {
+    if (roundLogs) {
+      roundLogs.push({ round, events: currentRoundEvents, endState: captureEndState() });
+    }
+  };
+
   // ── Initiative: without Alert, enemies have a 50% chance to act before the bard ──
   // This models the real-world risk of losing initiative and taking hits before the
   // bard can cast a control spell.
-  if (!hasAlert && rollDie(2) === 1) {
-    // Enemies act first — bard hasn't moved yet, no Mirror Image up
+  currentRoundEvents = [];
+  const enemiesWonInit = !hasAlert && rollDie(2) === 1;
+  if (hasAlert) {
+    logEvent({
+      actor: 'Bard',
+      action: 'Initiative',
+      outcome: `Alert feat: Bard automatically wins initiative (+5 bonus). Bard acts first in round 1.`,
+    });
+  } else if (enemiesWonInit) {
+    logEvent({
+      actor: 'Bard',
+      action: 'Initiative',
+      outcome: `No Alert feat: coin-flip initiative — enemies won. Enemies act before the bard in round 1 (bard has no Mirror Image or control spell up yet).`,
+    });
+  } else {
+    logEvent({
+      actor: 'Bard',
+      action: 'Initiative',
+      outcome: `No Alert feat: coin-flip initiative — bard won. Bard acts first in round 1.`,
+    });
+  }
+
+  if (enemiesWonInit) {
     for (const enemy of enemies.filter((e) => e.alive)) {
       const attackRoll = rollDie(20);
       const isCrit = attackRoll === 20 && !hasAdamantine;
@@ -1039,20 +1235,56 @@ function simulateSingleCombat(
         const dmg = parseDamage(enemy.damage) + (isCrit ? parseDamage(enemy.damage.split('+')[0]) : 0);
         damageTaken += dmg;
         candidateHp -= dmg;
+        logEvent({
+          actor: enemy.name,
+          action: 'Pre-Round Surprise Attack',
+          target: 'Bard',
+          roll: attackRoll,
+          rollTotal: attackRoll + enemy.attackBonus,
+          dc: effectiveAC,
+          success: true,
+          isCrit,
+          damage: dmg,
+          outcome: `${enemy.name} attacks Bard (pre-round, no Mirror Image): roll ${attackRoll}+${enemy.attackBonus}=${attackRoll + enemy.attackBonus} vs AC ${effectiveAC} — HIT${isCrit ? ' (CRITICAL)' : ''}. Deals ${dmg} damage. Bard HP: ${candidateHp}/${candidate.maxHitPoints}.`,
+        });
         if (candidateHp <= 0) {
+          logEvent({ actor: 'Bard', action: 'Death', outcome: `Bard drops to 0 HP during enemy surprise pre-round. DEFEAT.` });
+          pushRoundLog(0);
           return { survived: false, roundsToEnd: 0, damageTaken, concentrationBreaks };
         }
+      } else {
+        logEvent({
+          actor: enemy.name,
+          action: 'Pre-Round Surprise Attack',
+          target: 'Bard',
+          roll: attackRoll,
+          rollTotal: attackRoll + enemy.attackBonus,
+          dc: effectiveAC,
+          success: false,
+          outcome: `${enemy.name} attacks Bard (pre-round): roll ${attackRoll}+${enemy.attackBonus}=${attackRoll + enemy.attackBonus} vs AC ${effectiveAC} — MISS.`,
+        });
       }
     }
   }
+  pushRoundLog(0);
 
   for (let round = 1; round <= scenario.rounds; round++) {
+    currentRoundEvents = [];
     roundsElapsed = round;
     const aliveEnemies = enemies.filter((e) => e.alive && !e.controlled);
     if (aliveEnemies.length === 0) break;
 
     // ── Hidden Step expires at the start of the bard's turn ──────────────────
-    hiddenStepActive = false;
+    if (hiddenStepActive) {
+      hiddenStepActive = false;
+      logEvent({
+        actor: 'Bard',
+        action: 'Hidden Step Expires',
+        outcome: `Hidden Step (Firbolg) expires at the start of Bard's turn. Bard is visible again.`,
+      });
+    } else {
+      hiddenStepActive = false;
+    }
 
     // ── Fey Step: emergency teleport when HP is dangerously low ──────────────
     // The bard uses their bonus action to vanish 30 ft away. All enemies spend their
@@ -1062,6 +1294,11 @@ function simulateSingleCombat(
       feyStepJustUsed = true; // signal: skip enemy attacks this round only
       // Bard still acts normally (control spell / attack); only enemy attacks are skipped.
       // Fall through to bard's action below, then skip enemy attack phase.
+      logEvent({
+        actor: 'Bard',
+        action: 'Fey Step (Bonus Action)',
+        outcome: `Bard HP is ${candidateHp}/${candidate.maxHitPoints} (${Math.round(candidateHp / candidate.maxHitPoints * 100)}% — at or below 40% threshold). Eladrin Fey Step: teleport 30 ft away. Enemies must spend movement closing the gap and cannot attack this round.`,
+      });
     }
 
     // ── Hidden Step: activate after the control spell is established ──────────
@@ -1071,38 +1308,115 @@ function simulateSingleCombat(
     if (hasHiddenStep && !hiddenStepUsed && concentrating && aliveEnemies.length > 0) {
       hiddenStepActive = true;
       hiddenStepUsed = true;
+      logEvent({
+        actor: 'Bard',
+        action: 'Hidden Step (Bonus Action)',
+        outcome: `Firbolg Hidden Step activated: Bard turns invisible for this round. Bard skips weapon attack to maintain stealth. All enemy attacks this round are made with disadvantage (lower of two d20 rolls).`,
+      });
     }
 
     // ── Candidate's turn ──────────────────────────────────────────────
-    // If Hidden Step is active, the bard refrains from attacking to maintain stealth.
+    // If Hidden Step was just activated this turn (set to true in the block above),
+    // the bard refrains from attacking to maintain stealth.
     // Use control spell in round 1 if available and not yet used
     if (hasControlSpell && !controlSpellUsed && aliveEnemies.length >= 2) {
       // Hypnotic Pattern / Hold Person — enemies must make WIS save
       const savesNeeded = Math.min(aliveEnemies.length, 3);
+      const controlSpellName = candidate.spells.find((s) => s.type === 'control' && s.level >= 2 && s.level <= 4)?.name ?? 'Control Spell';
+      logEvent({
+        actor: 'Bard',
+        action: `Cast ${controlSpellName} (Action)`,
+        outcome: `Bard casts ${controlSpellName} (DC ${spellSaveDC}) targeting ${savesNeeded} of ${aliveEnemies.length} active enemies. Spell attack bonus: +${spellAttack}.`,
+      });
+      let controlled = 0;
       for (let ei = 0; ei < savesNeeded; ei++) {
         const savRoll = rollDie(20);
-        if (savRoll + aliveEnemies[ei].savingThrow < spellSaveDC) {
+        const saveTotal = savRoll + aliveEnemies[ei].savingThrow;
+        const saved = saveTotal >= spellSaveDC;
+        if (!saved) {
           aliveEnemies[ei].controlled = true; // Incapacitated; stays alive for later
           concentrating = true;
+          controlled++;
         }
+        logEvent({
+          actor: aliveEnemies[ei].name,
+          action: 'WIS Saving Throw vs Control Spell',
+          target: 'Bard',
+          roll: savRoll,
+          rollTotal: saveTotal,
+          dc: spellSaveDC,
+          success: saved,
+          outcome: `${aliveEnemies[ei].name} WIS save: roll ${savRoll}+${aliveEnemies[ei].savingThrow}=${saveTotal} vs DC ${spellSaveDC} — ${saved ? 'PASS (resists, remains active)' : `FAIL (incapacitated, under Bard's control)`}.`,
+        });
+      }
+      if (controlled > 0) {
+        logEvent({
+          actor: 'Bard',
+          action: 'Concentration Started',
+          outcome: `${controlSpellName} incapacitated ${controlled}/${savesNeeded} enemies. Bard is now concentrating. Remaining free enemies: ${aliveEnemies.length - controlled}.`,
+        });
+      } else {
+        logEvent({
+          actor: 'Bard',
+          action: 'Control Spell Failed',
+          outcome: `All ${savesNeeded} enemies resisted ${controlSpellName}. Spell slot spent, no concentration — spell was wasted this encounter.`,
+        });
       }
       controlSpellUsed = true;
-    } else if (!hiddenStepActive) {
+    } else if (hiddenStepActive) {
+      logEvent({
+        actor: 'Bard',
+        action: 'Turn: Hidden (no attack)',
+        outcome: `Bard is invisible (Hidden Step active). Forgoing weapon attack to maintain invisibility — enemies will attack with disadvantage this round.`,
+      });
+    } else {
       // Hidden Step is not active — bard can attack normally.
       // Attack with weapon (Valor gets Extra Attack at 6, so 2 attacks)
       const attacks = isValorBard ? 2 : 1;
       const target = aliveEnemies[0];
-      for (let a = 0; a < attacks; a++) {
-        const attackRoll = rollDie(20);
-        const isCrit = attackRoll === 20;
-        const hits = (attackRoll + attackBonus) >= target.ac;
-        if (hits || isCrit) {
-          const dmg = parseDamage('1d8') + dex + weaponBonus + (isCrit ? rollDie(8) : 0);
-          target.hp -= dmg;
-          if (target.hp <= 0) {
-            target.alive = false;
-            target.controlled = false;
-            break;
+      if (!target) {
+        logEvent({ actor: 'Bard', action: 'Turn: No Target', outcome: 'No active enemies to attack this round.' });
+      } else {
+        for (let a = 0; a < attacks; a++) {
+          const attackRoll = rollDie(20);
+          const isCrit = attackRoll === 20;
+          const hits = isCrit || (attackRoll + attackBonus) >= target.ac;
+          if (hits || isCrit) {
+            const dmg = parseDamage('1d8') + dex + weaponBonus + (isCrit ? rollDie(8) : 0);
+            target.hp -= dmg;
+            logEvent({
+              actor: 'Bard',
+              action: `Weapon Attack${attacks > 1 ? ` ${a + 1}/${attacks}` : ''} (Action)`,
+              target: target.name,
+              roll: attackRoll,
+              rollTotal: attackRoll + attackBonus,
+              dc: target.ac,
+              success: true,
+              isCrit,
+              damage: dmg,
+              outcome: `Bard attacks ${target.name}: roll ${attackRoll}+${attackBonus}=${attackRoll + attackBonus} vs AC ${target.ac} — HIT${isCrit ? ' (CRITICAL)' : ''}. Deals ${dmg} damage. ${target.name} HP: ${Math.max(0, target.hp)}/${target.maxHp}.`,
+            });
+            if (target.hp <= 0) {
+              target.alive = false;
+              target.controlled = false;
+              logEvent({
+                actor: target.name,
+                action: 'Defeated',
+                outcome: `${target.name} drops to 0 HP and is defeated.`,
+              });
+              break;
+            }
+          } else {
+            logEvent({
+              actor: 'Bard',
+              action: `Weapon Attack${attacks > 1 ? ` ${a + 1}/${attacks}` : ''} (Action)`,
+              target: target.name,
+              roll: attackRoll,
+              rollTotal: attackRoll + attackBonus,
+              dc: target.ac,
+              success: false,
+              outcome: `Bard attacks ${target.name}: roll ${attackRoll}+${attackBonus}=${attackRoll + attackBonus} vs AC ${target.ac} — MISS.`,
+            });
           }
         }
       }
@@ -1110,59 +1424,121 @@ function simulateSingleCombat(
 
     // Refresh alive enemies after candidate attacks
     const aliveAfterTurn = enemies.filter((e) => e.alive && !e.controlled);
-    if (aliveAfterTurn.length === 0) break;
+    if (aliveAfterTurn.length === 0) {
+      logEvent({ actor: 'Bard', action: 'Round End', outcome: `All enemies defeated or controlled. VICTORY.` });
+      pushRoundLog(round);
+      break;
+    }
 
     // ── Fey Step: bard teleported away this round — enemies cannot reach ─────
     // Skip the entire enemy attack phase. The bard is 30 ft out of melee range and
     // enemies use their movement re-closing the gap rather than attacking.
     if (feyStepJustUsed) {
+      logEvent({
+        actor: 'Enemies',
+        action: 'Enemy Turns Skipped',
+        outcome: `Bard teleported 30 ft away via Fey Step. All ${aliveAfterTurn.length} enemies spend their movement closing the gap. No attacks are possible this round.`,
+      });
       feyStepJustUsed = false;
+      pushRoundLog(round);
       continue;
     }
 
     // ── Enemy turns ───────────────────────────────────────────────────
     for (const enemy of aliveAfterTurn) {
-      // ── Enemy Spellcasting: Hold Person / Control Magic ──────────────────────
+      // ── Enemy AI Decision: Spellcasting or Attack ────────────────────────────
       // The enemy attempts to incapacitate the bard. Species with Magic Resistance
       // (Satyr, Yuan-Ti) roll their WIS save with advantage.
       if (enemy.spellSaveDC && enemy.spellUseChance && Math.random() < enemy.spellUseChance) {
         const wisRoll1 = rollDie(20);
         // Magic Resistance: roll a second die and take the higher result (advantage).
-        const wisRoll = hasMagicResistance ? Math.max(wisRoll1, rollDie(20)) : wisRoll1;
-        if (wisRoll + wis < enemy.spellSaveDC) {
+        const wisRoll2 = hasMagicResistance ? rollDie(20) : null;
+        const wisRoll = wisRoll2 !== null ? Math.max(wisRoll1, wisRoll2) : wisRoll1;
+        const wisTotal = wisRoll + wis;
+        const spellResisted = wisTotal >= (enemy.spellSaveDC ?? 0);
+
+        if (hasMagicResistance && wisRoll2 !== null) {
+          logEvent({
+            actor: enemy.name,
+            action: 'Cast Incapacitating Spell (AI: Spellcast)',
+            target: 'Bard',
+            roll: wisRoll,
+            rollTotal: wisTotal,
+            dc: enemy.spellSaveDC,
+            success: spellResisted,
+            outcome: `${enemy.name} AI decision: cast incapacitating spell (DC ${enemy.spellSaveDC}). Bard WIS save with ADVANTAGE (Magic Resistance): dice=[${wisRoll1},${wisRoll2 ?? '-'}] take higher=${wisRoll}, +${wis}=${wisTotal} vs DC ${enemy.spellSaveDC} — ${spellResisted ? 'PASS (spell resisted!)' : 'FAIL (bard incapacitated)'}`,
+          });
+        } else {
+          logEvent({
+            actor: enemy.name,
+            action: 'Cast Incapacitating Spell (AI: Spellcast)',
+            target: 'Bard',
+            roll: wisRoll,
+            rollTotal: wisTotal,
+            dc: enemy.spellSaveDC,
+            success: spellResisted,
+            outcome: `${enemy.name} AI decision: cast incapacitating spell (DC ${enemy.spellSaveDC}). Bard WIS save: roll ${wisRoll}+${wis}=${wisTotal} vs DC ${enemy.spellSaveDC} — ${spellResisted ? 'PASS (spell resisted!)' : 'FAIL (bard incapacitated)'}`,
+          });
+        }
+
+        if (!spellResisted) {
           // Bard is incapacitated: concentration breaks, and takes a guaranteed hit
           if (concentrating) {
             concentrating = false;
             concentrationBreaks++;
-            enemies.forEach((e) => {
-              if (e.controlled) {
-                e.controlled = false;
-                e.hp = Math.ceil(e.maxHp / 2);
-              }
+            const freed = enemies.filter((e) => e.controlled);
+            freed.forEach((e) => {
+              e.controlled = false;
+              e.hp = Math.ceil(e.maxHp / 2);
             });
+            if (freed.length > 0) {
+              logEvent({
+                actor: 'Bard',
+                action: 'Concentration Broken (Incapacitated)',
+                outcome: `Bard incapacitated — concentration spell ends. ${freed.length} controlled enemy/enemies break free at half HP (${freed.map((e) => `${e.name}: ${e.hp}/${e.maxHp} HP`).join(', ')}).`,
+              });
+            }
           }
           const spellHitDmg = parseDamage(enemy.damage);
           damageTaken += spellHitDmg;
           candidateHp -= spellHitDmg;
+          logEvent({
+            actor: enemy.name,
+            action: 'Incapacitation Damage',
+            target: 'Bard',
+            damage: spellHitDmg,
+            outcome: `Bard incapacitated — takes automatic ${spellHitDmg} damage. Bard HP: ${candidateHp}/${candidate.maxHitPoints}.`,
+          });
           if (candidateHp <= 0) {
+            logEvent({ actor: 'Bard', action: 'Death', outcome: `Bard drops to 0 HP after incapacitation. DEFEAT.` });
+            pushRoundLog(round);
             return { survived: false, roundsToEnd: round, damageTaken, concentrationBreaks };
           }
           continue; // Enemy used their action on the spell — no melee attack this turn
         }
+        // Spell resisted — enemy expended their action; no melee attack this turn
+        continue;
       }
 
-      // ── Enemy Melee / Ranged Attack ──────────────────────────────────────────
+      // ── Enemy AI Decision: Melee / Ranged Attack ─────────────────────────────
       // Hidden Step: bard is invisible — attacker must roll with disadvantage (take the lower die).
       const attackRoll1 = rollDie(20);
-      const attackRoll = hiddenStepActive ? Math.min(attackRoll1, rollDie(20)) : attackRoll1;
+      const attackRoll2 = hiddenStepActive ? rollDie(20) : null;
+      const attackRoll = attackRoll2 !== null ? Math.min(attackRoll1, attackRoll2) : attackRoll1;
       const isCrit = attackRoll === 20 && !hasAdamantine;
 
       // Mirror Image: 1/3 chance of hitting an image instead
       if (mirrorImageCharges > 0) {
-        const roll = rollDie(20);
-        if (roll <= 6) {
-          // Hit the image
+        const mirrorRoll = rollDie(20);
+        if (mirrorRoll <= 6) {
           mirrorImageCharges--;
+          logEvent({
+            actor: enemy.name,
+            action: 'Attack Deflected by Mirror Image (AI: Melee Attack)',
+            target: 'Bard',
+            roll: attackRoll,
+            outcome: `${enemy.name} attacks: roll ${attackRoll}${attackRoll2 !== null ? ` (disadvantage: [${attackRoll1},${attackRoll2}] take lower)` : ''}+${enemy.attackBonus} — deflected by Mirror Image (mirror check roll: ${mirrorRoll} ≤ 6). Mirror Image charges remaining: ${mirrorImageCharges}.`,
+          });
           continue;
         }
       }
@@ -1172,7 +1548,21 @@ function simulateSingleCombat(
         const dmg = parseDamage(enemy.damage) + (isCrit ? parseDamage(enemy.damage.split('+')[0]) : 0);
         damageTaken += dmg;
         candidateHp -= dmg;
+        logEvent({
+          actor: enemy.name,
+          action: 'Melee/Ranged Attack (AI: Attack)',
+          target: 'Bard',
+          roll: attackRoll,
+          rollTotal: attackRoll + enemy.attackBonus,
+          dc: effectiveAC,
+          success: true,
+          isCrit,
+          damage: dmg,
+          outcome: `${enemy.name} attacks Bard${attackRoll2 !== null ? ` (disadvantage from Hidden Step: [${attackRoll1},${attackRoll2}] take lower=${attackRoll})` : ''}: roll ${attackRoll}+${enemy.attackBonus}=${attackRoll + enemy.attackBonus} vs AC ${effectiveAC} — HIT${isCrit ? ' (CRITICAL' + (hasAdamantine ? ' downgraded by Adamantine)' : ')') : ''}. Deals ${dmg} damage. Bard HP: ${candidateHp}/${candidate.maxHitPoints}.`,
+        });
         if (candidateHp <= 0) {
+          logEvent({ actor: 'Bard', action: 'Death', outcome: `Bard drops to 0 HP. DEFEAT.` });
+          pushRoundLog(round);
           return { survived: false, roundsToEnd: round, damageTaken, concentrationBreaks };
         }
 
@@ -1190,24 +1580,57 @@ function simulateSingleCombat(
           let conRoll = hasWarCaster
             ? Math.max(rollWithLuck() + con, rollWithLuck() + con)
             : rollWithLuck() + con;
-          // Lucky feat: spend a luck point to reroll a failing save
-          if (conRoll < conSaveDC && luckyPointsLeft > 0) {
+          const usedLucky = conRoll < conSaveDC && luckyPointsLeft > 0;
+          if (usedLucky) {
             luckyPointsLeft--;
             const luckyReroll = rollWithLuck() + con;
+            const before = conRoll;
             conRoll = Math.max(conRoll, luckyReroll);
+            logEvent({
+              actor: 'Bard',
+              action: 'Concentration Save — Lucky Reroll',
+              outcome: `Lucky feat: spent 1 luck point (${luckyPointsLeft} remaining) to reroll failing concentration save. Before: ${before}, after reroll: ${conRoll}.`,
+            });
           }
-          if (conRoll < conSaveDC) {
+          const concSaved = conRoll >= conSaveDC;
+          logEvent({
+            actor: 'Bard',
+            action: 'Concentration Saving Throw',
+            roll: conRoll,
+            rollTotal: conRoll,
+            dc: conSaveDC,
+            success: concSaved,
+            outcome: `Concentration check after taking ${dmg} damage (DC ${conSaveDC} = max(10, ⌊${dmg}/2⌋))${hasWarCaster ? ' with ADVANTAGE (War Caster)' : ''}${hasHalflingLucky ? ' [Halfling Lucky: natural 1s rerolled]' : ''}: roll ${conRoll} vs DC ${conSaveDC} — ${concSaved ? 'SUCCESS (concentration maintained)' : 'FAIL (concentration broken)'}`,
+          });
+          if (!concSaved) {
             concentrating = false;
             concentrationBreaks++;
             // Controlled enemies shake free — they rejoin combat at half their original HP
-            enemies.forEach((e) => {
-              if (e.controlled) {
-                e.controlled = false;
-                e.hp = Math.ceil(e.maxHp / 2);
-              }
+            const freed = enemies.filter((e) => e.controlled);
+            freed.forEach((e) => {
+              e.controlled = false;
+              e.hp = Math.ceil(e.maxHp / 2);
             });
+            if (freed.length > 0) {
+              logEvent({
+                actor: 'Bard',
+                action: 'Concentration Broken',
+                outcome: `Concentration lost. ${freed.length} controlled enemy/enemies shake free at half HP (${freed.map((e) => `${e.name}: ${e.hp}/${e.maxHp} HP`).join(', ')}).`,
+              });
+            }
           }
         }
+      } else {
+        logEvent({
+          actor: enemy.name,
+          action: 'Melee/Ranged Attack (AI: Attack)',
+          target: 'Bard',
+          roll: attackRoll,
+          rollTotal: attackRoll + enemy.attackBonus,
+          dc: effectiveAC,
+          success: false,
+          outcome: `${enemy.name} attacks Bard${attackRoll2 !== null ? ` (disadvantage from Hidden Step: [${attackRoll1},${attackRoll2}] take lower=${attackRoll})` : ''}: roll ${attackRoll}+${enemy.attackBonus}=${attackRoll + enemy.attackBonus} vs AC ${effectiveAC} — MISS.`,
+        });
       }
     }
 
@@ -1217,16 +1640,47 @@ function simulateSingleCombat(
     // We process all controlled enemies here, at the end of the round, as an
     // approximation of the per-target-turn mechanic.
     if (concentrating) {
-      for (const enemy of enemies.filter((e) => e.controlled && e.alive)) {
-        if (rollDie(20) + enemy.savingThrow >= spellSaveDC) {
+      const controlledThisRound = enemies.filter((e) => e.controlled && e.alive);
+      for (const enemy of controlledThisRound) {
+        const escapeRoll = rollDie(20);
+        const escapeTotal = escapeRoll + enemy.savingThrow;
+        const brokeFree = escapeTotal >= spellSaveDC;
+        logEvent({
+          actor: enemy.name,
+          action: 'End-of-Round: WIS Save to Break Free from Control',
+          roll: escapeRoll,
+          rollTotal: escapeTotal,
+          dc: spellSaveDC,
+          success: brokeFree,
+          outcome: `${enemy.name} (controlled) WIS save to break free: roll ${escapeRoll}+${enemy.savingThrow}=${escapeTotal} vs DC ${spellSaveDC} — ${brokeFree ? `PASS (breaks free at ${enemy.hp}/${enemy.maxHp} HP and rejoins combat)` : 'FAIL (remains incapacitated)'}`,
+        });
+        if (brokeFree) {
           enemy.controlled = false; // broke free at current HP
         }
       }
       // If no enemies remain under control, concentration ends naturally
       if (!enemies.some((e) => e.controlled)) {
+        if (controlledThisRound.length > 0) {
+          logEvent({
+            actor: 'Bard',
+            action: 'Concentration Ends (No Targets)',
+            outcome: `All controlled enemies have broken free. Concentration spell ends naturally.`,
+          });
+        }
         concentrating = false;
       }
     }
+
+    // Log end-of-round status
+    const stillControlled = enemies.filter((e) => e.controlled && e.alive).length;
+    const stillAlive = enemies.filter((e) => e.alive && !e.controlled).length;
+    logEvent({
+      actor: 'Round Summary',
+      action: `End of Round ${round}`,
+      outcome: `Bard HP: ${candidateHp}/${candidate.maxHitPoints} | Concentrating: ${concentrating} | Breaks: ${concentrationBreaks} | Mirror Images: ${mirrorImageCharges} | Enemies active/free: ${stillAlive} | Enemies controlled: ${stillControlled}`,
+    });
+
+    pushRoundLog(round);
   }
 
   const finalAlive = enemies.filter((e) => e.alive && !e.controlled);
@@ -1286,6 +1740,90 @@ function simulateSingleSocial(
 }
 
 // ─── Party Support Simulation ─────────────────────────────────────────────────
+
+/**
+ * Run a single social scenario and return a full log of all decisions and rolls.
+ * Used for turn-by-turn encounter log generation.
+ */
+function simulateSingleSocialWithLog(
+  candidate: BardCandidate,
+  scenario: SocialScenario,
+  buildId: string,
+): SocialEncounterLog {
+  const cha = modifierFor(candidate.abilityScores.charisma);
+  const profBonus = candidate.proficiencyBonus;
+  const isExpert = candidate.skillExpertise.includes(scenario.skill);
+  const isProficient = candidate.skillProficiencies.includes(scenario.skill);
+
+  let skillBonus = cha;
+  if (isExpert) {
+    skillBonus += profBonus * 2;
+  } else if (isProficient) {
+    skillBonus += profBonus;
+  }
+
+  const hasActorFeat = candidate.feats.some((f) => f.name === 'Actor');
+  const actorAdvantage = hasActorFeat && (scenario.skill === 'Deception' || scenario.skill === 'Performance');
+  const hasHatOfDisguise = candidate.equipment.some((e) => e.name === 'Hat of Disguise');
+  const disguiseAdvantage = hasHatOfDisguise && scenario.skill === 'Deception';
+  const equipmentSocialAdvantage = getEquipmentSocialAdvantageSkills(candidate);
+  const equipmentAdvantage = equipmentSocialAdvantage.has(scenario.skill);
+  const useAdvantage = actorAdvantage || disguiseAdvantage || equipmentAdvantage;
+
+  const advantages: string[] = [];
+  if (actorAdvantage) advantages.push(`Actor feat (advantage on ${scenario.skill})`);
+  if (disguiseAdvantage) advantages.push('Hat of Disguise (advantage on Deception while disguised)');
+  if (equipmentAdvantage) {
+    const items = candidate.equipment
+      .filter((e) => e.socialAdvantageSkills?.includes(scenario.skill))
+      .map((e) => e.name);
+    advantages.push(`Equipment: ${items.join(', ')} (advantage on ${scenario.skill})`);
+  }
+
+  const bonusBreakdown = isExpert
+    ? `CHA ${cha} + expertise (${profBonus * 2}) = +${skillBonus}`
+    : isProficient
+      ? `CHA ${cha} + proficiency (${profBonus}) = +${skillBonus}`
+      : `CHA ${cha} (no proficiency) = +${skillBonus}`;
+
+  const roll1 = rollDie(20);
+  const roll2 = useAdvantage ? rollDie(20) : undefined;
+  const finalRoll = roll2 !== undefined ? Math.max(roll1, roll2) : roll1;
+  const total = finalRoll + skillBonus;
+  const success = total >= scenario.dc;
+  const isCritSuccess = finalRoll === 20;
+
+  let outcomeDetail = `${scenario.skill} check: ${bonusBreakdown}. `;
+  if (useAdvantage && roll2 !== undefined) {
+    outcomeDetail += `ADVANTAGE (${advantages.join(', ')}): rolls [${roll1},${roll2}] take higher=${finalRoll}. `;
+  } else {
+    outcomeDetail += `Roll: ${finalRoll}. `;
+  }
+  outcomeDetail += `Total: ${finalRoll}+${skillBonus}=${total} vs DC ${scenario.dc} — `;
+  if (isCritSuccess) {
+    outcomeDetail += 'CRITICAL SUCCESS (natural 20 — maximum impact).';
+  } else if (success) {
+    outcomeDetail += `SUCCESS (${total} ≥ ${scenario.dc}).`;
+  } else {
+    outcomeDetail += `FAILURE (${total} < ${scenario.dc}).`;
+  }
+
+  return {
+    buildId,
+    scenarioName: scenario.name,
+    description: scenario.description,
+    skill: scenario.skill,
+    dc: scenario.dc,
+    skillBonus,
+    advantages,
+    roll1,
+    roll2,
+    finalRoll,
+    total,
+    outcome: isCritSuccess ? 'critical_success' : success ? 'success' : 'failure',
+    outcomeDetail,
+  };
+}
 
 /**
  * Simulate one party support scenario for a candidate.
@@ -1397,6 +1935,191 @@ function simulateSinglePartySupport(
   }
 
   return { inspirationsGiven, healingDealt, featureActivations };
+}
+
+/**
+ * Run a single party-support scenario and return a full per-round log.
+ * Used for turn-by-turn encounter log generation.
+ */
+function simulateSinglePartySupportWithLog(
+  candidate: BardCandidate,
+  scenario: PartySupportScenario,
+  buildId: string,
+): PartySupportEncounterLog {
+  const cha = modifierFor(candidate.abilityScores.charisma);
+  const isGlamour = candidate.subclass === 'College of Glamour';
+  const isValor = candidate.subclass === 'College of Valor';
+  const isLore = candidate.subclass === 'College of Lore';
+  const hasInspiringLeader = candidate.feats.some((f) => f.name === 'Inspiring Leader');
+  const hasCounterspell = candidate.spells.some((s) => s.name === 'Counterspell');
+  const hasBless = candidate.spells.some((s) => s.name === 'Bless');
+
+  let inspirationDice = cha;
+  let healingSlots = 4;
+  let reactiveFeatureUses = cha;
+  let inspirationsGiven = 0;
+  let healingDealt = 0;
+  let featureActivations = 0;
+  let blessCastInRound1 = false;
+
+  const roundLogs: PartySupportRoundLog[] = [];
+
+  // ── Pre-combat phase ────────────────────────────────────────────────────────
+  const preRoundEvents: PartySupportTurnEvent[] = [];
+  if (hasInspiringLeader) {
+    featureActivations++;
+    preRoundEvents.push({
+      actor: 'Bard',
+      action: 'Inspiring Leader (Pre-Combat)',
+      outcome: `Inspiring Leader: Bard delivers a 10-minute speech granting the party ${8 + cha} temporary HP each before combat begins.`,
+    });
+  }
+  if (isGlamour && scenario.type === 'social-support') {
+    featureActivations++;
+    preRoundEvents.push({
+      actor: 'Bard',
+      action: 'Enthralling Performance (Pre-Combat)',
+      outcome: `Glamour Bard: Enthralling Performance neutralises up to ${cha} hostile NPCs at this social event for 1 minute.`,
+    });
+  }
+  if (preRoundEvents.length > 0) {
+    roundLogs.push({
+      round: 0,
+      events: preRoundEvents,
+      endState: { inspirationDiceLeft: inspirationDice, healingSlotsLeft: healingSlots, reactiveFeatureUsesLeft: reactiveFeatureUses, inspirationsGiven, healingDealt, featureActivations },
+    });
+  }
+
+  for (let round = 1; round <= scenario.rounds; round++) {
+    const events: PartySupportTurnEvent[] = [];
+
+    // Midpoint short rest: partially replenish inspiration
+    if (round === Math.floor(scenario.rounds / 2) + 1) {
+      const before = inspirationDice;
+      inspirationDice = Math.min(inspirationDice + cha, cha * 2);
+      reactiveFeatureUses = cha;
+      events.push({
+        actor: 'Bard',
+        action: 'Short Rest',
+        outcome: `Mid-encounter short rest: Bardic Inspiration replenished from ${before} → ${inspirationDice} (max ${cha * 2}). Reactive feature uses reset to ${cha}.`,
+      });
+    }
+
+    // Healing Word (bonus action) — reactive healing when an ally is downed
+    const needsHeal = Math.random() < scenario.allyNeedHealChance;
+    if (needsHeal && healingSlots > 0) {
+      const healRoll = rollDie(4);
+      const heal = healRoll + cha;
+      healingDealt += heal;
+      healingSlots--;
+      events.push({
+        actor: 'Bard',
+        action: 'Healing Word (Bonus Action)',
+        amount: heal,
+        outcome: `Ally is downed — Bard casts Healing Word (bonus action): d4(${healRoll})+${cha}=${heal} HP restored. Spell slots remaining: ${healingSlots}.`,
+      });
+    } else if (needsHeal && healingSlots === 0) {
+      events.push({
+        actor: 'Bard',
+        action: 'Healing Word — No Slots',
+        outcome: `Ally needs healing but Bard has no spell slots remaining for Healing Word. Cannot heal this round.`,
+      });
+    }
+
+    if (isGlamour && inspirationDice > 0) {
+      inspirationDice--;
+      inspirationsGiven++;
+      featureActivations++;
+      events.push({
+        actor: 'Bard',
+        action: 'Mantle of Inspiration (Bonus Action)',
+        outcome: `Glamour Bard: Mantle of Inspiration — spend 1 inspiration die to grant ${cha} allies up to ${cha} temporary HP and let them each move up to their speed as a reaction. Inspiration dice remaining: ${inspirationDice}.`,
+      });
+    } else if (isValor) {
+      if (!blessCastInRound1 && hasBless && round === 1) {
+        featureActivations++;
+        blessCastInRound1 = true;
+        events.push({
+          actor: 'Bard',
+          action: 'Bless (Action — Round 1)',
+          outcome: `Valor Bard: casts Bless (concentration) on 3 allies — each adds d4 to attack rolls and saving throws for the encounter.`,
+        });
+      }
+      if (inspirationDice > 0) {
+        inspirationsGiven++;
+        inspirationDice--;
+        events.push({
+          actor: 'Bard',
+          action: 'Bardic Inspiration (Bonus Action)',
+          outcome: `Valor Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: ${inspirationDice}.`,
+        });
+      } else {
+        events.push({
+          actor: 'Bard',
+          action: 'Bardic Inspiration — Exhausted',
+          outcome: `No Bardic Inspiration dice remaining this rest. Turn: action used for combat (melee/spell).`,
+        });
+      }
+    } else if (isLore) {
+      if (inspirationDice > 0) {
+        inspirationsGiven++;
+        inspirationDice--;
+        events.push({
+          actor: 'Bard',
+          action: 'Bardic Inspiration (Bonus Action)',
+          outcome: `Lore Bard: grants Bardic Inspiration d8 to an ally. Dice remaining: ${inspirationDice}.`,
+        });
+      } else {
+        events.push({
+          actor: 'Bard',
+          action: 'Bardic Inspiration — Exhausted',
+          outcome: `No Bardic Inspiration dice remaining this rest.`,
+        });
+      }
+    }
+
+    if (isLore && reactiveFeatureUses > 0 && Math.random() < 0.65) {
+      reactiveFeatureUses--;
+      featureActivations++;
+      events.push({
+        actor: 'Bard',
+        action: 'Cutting Words (Reaction)',
+        outcome: `Lore Bard: Cutting Words — impose disadvantage on enemy roll (subtract d8 from their total). Reactive uses remaining: ${reactiveFeatureUses}.`,
+      });
+    }
+
+    if (hasCounterspell && Math.random() < scenario.enemySpellChance) {
+      featureActivations++;
+      events.push({
+        actor: 'Bard',
+        action: 'Counterspell (Reaction)',
+        outcome: `Enemy cast a spell — Bard counters it with Counterspell (reaction), negating the spell entirely.`,
+      });
+    }
+
+    if (isGlamour && scenario.type === 'social-support') {
+      featureActivations++;
+      events.push({
+        actor: 'Bard',
+        action: 'Mantle of Majesty — Command (Bonus Action)',
+        outcome: `Glamour Bard (Mantle of Majesty active): casts Command as a bonus action, disrupting a hostile social actor this round.`,
+      });
+    }
+
+    roundLogs.push({
+      round,
+      events,
+      endState: { inspirationDiceLeft: inspirationDice, healingSlotsLeft: healingSlots, reactiveFeatureUsesLeft: reactiveFeatureUses, inspirationsGiven, healingDealt, featureActivations },
+    });
+  }
+
+  return {
+    buildId,
+    scenarioName: scenario.name,
+    scenarioType: scenario.type,
+    rounds: roundLogs,
+    summary: { totalInspirations: inspirationsGiven, totalHealing: healingDealt, totalFeatureActivations: featureActivations },
+  };
 }
 
 function runPartySupportBenchmark(candidate: BardCandidate, iterations = SIMULATION_ITERATIONS): PartySupportScenarioResult[] {
@@ -2673,4 +3396,87 @@ export function getLoreBardFeatPool(): FeatTemplate[] {
  */
 export function getLoreBardMagicItemPool(): MagicItemTemplate[] {
   return LORE_BARD_MAGIC_ITEM_POOL;
+}
+
+/**
+ * Generate detailed turn-by-turn encounter logs for a single build.
+ *
+ * Runs ONE iteration of each scenario (4 combat, 3 social, 3 party-support)
+ * and captures every decision, roll, and outcome so the simulation can be
+ * validated line by line.
+ *
+ * These logs exist specifically for sanity-checking the benchmark rankings.
+ * Because each run is a single sample, results will vary from the statistical
+ * averages produced by `runLoreBardExploration` (which uses 25 iterations per
+ * scenario).  For a fair comparison, run `generateBuildEncounterLogs` multiple
+ * times and compare patterns rather than individual rolls.
+ *
+ * @param buildId - The exploration matrix build ID to log (e.g. the IDs
+ *   returned by `generateLoreBardBuilds()` or `GET /api/bard/explore`).
+ * @returns Full BuildEncounterLogs for the build, or null if not found.
+ */
+export function generateBuildEncounterLogs(buildId: string): BuildEncounterLogs | null {
+  const candidate = generateLoreBardBuilds().find((b) => b.id === buildId);
+  if (!candidate) return null;
+
+  const cha = modifierFor(candidate.abilityScores.charisma);
+  const magicItems = candidate.equipment
+    .filter((e) => e.rarity === 'uncommon')
+    .map((e) => e.name);
+
+  // ── Combat logs: one logged run per scenario ─────────────────────────────
+  const combatLogs: CombatEncounterLog[] = COMBAT_SCENARIOS.map((scenario) => {
+    const roundLogs: CombatRoundLog[] = [];
+    const result = simulateSingleCombat(candidate, scenario, roundLogs);
+    return {
+      buildId,
+      scenarioName: scenario.name,
+      difficulty: scenario.difficulty,
+      enemyRoster: scenario.enemies.flatMap((e) =>
+        Array.from({ length: e.count }, (_, i) => ({
+          name: `${e.name} ${i + 1}`,
+          hp: e.hp,
+          ac: e.ac,
+          attackBonus: e.attackBonus,
+          damage: e.damage,
+        }))
+      ),
+      rounds: roundLogs,
+      outcome: result.survived ? 'victory' : 'defeat',
+      summary: {
+        totalRounds: result.roundsToEnd,
+        damageTaken: result.damageTaken,
+        concentrationBreaks: result.concentrationBreaks,
+        survived: result.survived,
+      },
+    };
+  });
+
+  // ── Social logs: one logged run per scenario ─────────────────────────────
+  const socialLogs: SocialEncounterLog[] = SOCIAL_SCENARIOS.map((scenario) =>
+    simulateSingleSocialWithLog(candidate, scenario, buildId)
+  );
+
+  // ── Party-support logs: one logged run per scenario ──────────────────────
+  const partySupportLogs: PartySupportEncounterLog[] = PARTY_SUPPORT_SCENARIOS.map((scenario) =>
+    simulateSinglePartySupportWithLog(candidate, scenario, buildId)
+  );
+
+  return {
+    buildId,
+    buildSummary: {
+      species: candidate.species,
+      subspecies: candidate.subspecies,
+      feats: candidate.feats.map((f) => f.name),
+      magicItems,
+      abilityScores: candidate.abilityScores,
+      armorClass: candidate.armorClass,
+      maxHitPoints: candidate.maxHitPoints,
+      spellSaveDC: 8 + cha + candidate.proficiencyBonus + getEquipmentSpellSaveDCBonus(candidate),
+      charismaModifier: cha,
+    },
+    combatLogs,
+    socialLogs,
+    partySupportLogs,
+  };
 }
