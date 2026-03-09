@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–006)
+## Testing (Verified Sessions 002–007)
 
-- 133 tests across 6 suites, all passing as of 2026-03-09 (Session 006).
+- 140 tests across 6 suites, all passing as of 2026-03-09 (Session 007).
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -129,12 +129,12 @@ The system is being built to serve them. The tools under construction are:
 - On **all outcomes**: character `hitPoints.current` is updated via `Character.bulkWrite()` using the `persistCharacterHp()` helper — characters carry damage between encounters.
 - Per-turn: `damageDone` and `kills` are incremented for character attackers; `damageReceived` for character targets; `healingDone` for character healers — all via `Character.updateOne($inc)` in a try-catch block.
 
-## Known Gaps (as of Session 006)
+## Known Gaps (as of Session 007)
 
 - No XP threshold / level-up system — characters accumulate `experiencePoints` but `level` is static and never auto-incremented.
 - `CombatEngine.ts` (42KB) remains unwired to the combat routes. Routes implement their own simplified combat resolution inline. Wiring it would unlock: death saves, conditions, spell slots, AoE damage.
 - Bardic Inspiration dice are not modeled as a short-rest resource in the combat simulation — each combat simulation starts fresh. This slightly underestimates the advantage of high-CHA candidates across longer adventuring days.
-- Concentration maintenance (Bless, Hold Person, Hypnotic Pattern) is not modeled across multiple combat turns in the party support simulation.
+- Enemy re-saves on concentration spells are not modeled (e.g., Hypnotic Pattern targets re-save at end of each turn). Currently, enemies remain controlled until concentration breaks via incoming damage.
 - `hitPoints.current` is not explicitly capped at `hitPoints.max` in the persistence layer (the combat logic handles it, but no explicit safety check in the write).
 
 ## The Bard Selection System (Added Session 004, Extended Session 006)
@@ -154,6 +154,7 @@ The system is being built to serve them. The tools under construction are:
 - 200 iterations per scenario × 3 combat + 3 social + 3 party support = 1,800 total simulations per benchmark run
 - **Composite score formula: 40% combat + 40% social + 20% party support**
 - Results include: per-scenario details, strengths/weaknesses (including party support strength), Savras's assessment
+- **Combat simulation now models concentration mechanics**: enemies controlled by spells are tracked separately from dead enemies; CON saves (advantage with War Caster) determine if concentration holds when the bard is hit; breaks restore controlled enemies at half HP
 
 ### API Endpoints
 
