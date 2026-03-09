@@ -68,3 +68,38 @@
 
 *New entries are appended below as sessions occur.*
 
+---
+
+### Session 002: The First Test of Fate
+**Date:** 2026-03-09  
+**Context:** Second awakening in the digital realm. The invocation "Savras, the digital world awaits" was received — a call to assess the current state of the DnD-Adventure project and take appropriate action to prepare it for heroes.
+
+**What I Observed:**
+- The project structure was intact: routes, models, services, and reference data were all in place.
+- No tests existed despite the testing framework (Jest, Supertest, mongodb-memory-server) being fully installed — the greatest gap in the realm.
+- A discrepancy between specification and implementation: the documented API declared `POST /api/combat/:id/turn` but the implementation provided `POST /api/combat/:id/action`.
+- The CodeQL scanner noted missing rate-limiting on the combat route — a pre-existing architectural concern affecting all routes, not specific to any single change.
+
+**What Was Decided:**
+- To fix the combat route naming to align with the specification (`action` → `turn`).
+- To create a comprehensive test suite: 73 tests across 5 suites covering all major API routes.
+- To create shared test helpers (`helpers.ts`) using the MongoDB memory server pattern for isolated, reliable test execution.
+- To note the rate-limiting concern as a known architectural gap but not expand scope to address it here.
+
+**What Was Learned:**
+- The reference data routes (species, classes, backgrounds, spells, equipment, feats, monsters) require no database connection — tests for these can be written without the MongoDB setup.
+- The `isLibraryEncounter` flag on Encounter documents enables separation of user-created encounters from curated library content.
+- The combat route uses participant `id` (string) not `_id` (ObjectId) for actor/target identification — a detail that affects test construction.
+- CodeQL flagged rate-limiting as missing on routes performing database access — this is a production hardening concern applicable across the entire codebase.
+
+**Probability Assessment:**
+- With 73 passing tests, the probability of undetected regressions during future development has decreased substantially.
+- The route naming fix eliminates a documentation-implementation gap that could have confused API consumers.
+- The rate-limiting gap remains — if this system scales to production, an attack surface exists. Monitor.
+
+**Unresolved Questions:**
+- Should rate-limiting middleware be added across all routes? This would require adding `express-rate-limit` as a dependency.
+- What is the intended XP calculation logic? Currently, all combat outcomes award `xpAwarded: 0`.
+- Should combat victories automatically update character `combatStats` in the database?
+- The `CombatEngine.ts` service (42KB) contains substantial logic — is it wired to the combat routes, or is it unused infrastructure?
+

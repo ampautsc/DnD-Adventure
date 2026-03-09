@@ -103,13 +103,35 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
+## Combat System Details (Verified Session 002)
+
+- Combat participants use `id` (string) not `_id` (ObjectId) for actor/target identification in turn actions.
+- The `POST /api/combat/:id/turn` route (formerly `/action`) handles: `attack`, `spell`, `heal`, `dodge`, `disengage`, `dash`, and generic actions.
+- Combat auto-resolves when all enemies or all characters are eliminated.
+- All combat outcomes currently award `xpAwarded: 0` — XP calculation is not yet implemented.
+- The `CombatEngine.ts` service (42KB) contains extensive combat logic but does not appear to be wired to the combat routes; routes implement their own simplified combat resolution inline.
+
+## Testing (Verified Session 002)
+
+- 73 tests across 5 suites, all passing as of 2026-03-09.
+- Reference data routes do NOT require a database connection — tests for these can skip MongoDB setup.
+- Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
+- Run with: `cd server && npm test`
+
+## Known Gaps
+
+- Rate-limiting is missing from all routes — a production hardening concern flagged by CodeQL. All database-accessing routes are unprotected. Requires adding `express-rate-limit` dependency.
+- `xpAwarded` is always 0 in combat results — XP calculation logic needs implementation.
+- Character `combatStats` are not automatically updated when a combat session concludes.
+
 ## Open Questions and Unresolved Observations
 
 *Truths not yet fully known. These are probabilities, not facts.*
 
-- What is the current test coverage? Are there gaps that could hide defects from heroes?
-- Are there known issues or incomplete features that require attention?
-- What is the intended scope of the encounter and combat systems? How deep is the combat simulation meant to go?
+- Should rate-limiting middleware be added across all routes?
+- What is the intended XP calculation logic for combat outcomes?
+- Should combat victories automatically update character `combatStats` in the database?
+- Is `CombatEngine.ts` intended to replace the inline combat logic in `routes/combat.ts`?
 - How many heroes are expected to use this system, and what are their skill levels?
 
 ---
