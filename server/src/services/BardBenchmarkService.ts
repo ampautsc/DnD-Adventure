@@ -37,6 +37,40 @@ export interface BardEquipment {
   armorClass?: number;
 }
 
+/**
+ * Species combat abilities that are mechanically simulated turn-by-turn
+ * in the combat engine. Flavour-only abilities are listed in specialTraits.
+ */
+export interface SpeciesCombatTraits {
+  /**
+   * Firbolg: Once per short rest, bonus action to turn invisible for 1 round.
+   * Enemies attacking while Hidden Step is active have disadvantage.
+   * Ends immediately if the Firbolg attacks, makes a damage roll, or forces a save.
+   * Used defensively: bard activates after casting their control spell so enemies
+   * must attack with disadvantage, protecting concentration.
+   */
+  hiddenStep?: boolean;
+  /**
+   * Eladrin: Once per short rest, bonus action to teleport up to 30 ft.
+   * Used as an emergency escape when HP drops to 40% or below —
+   * the bard repositions out of range, causing all enemy melee attacks to miss
+   * for that round (enemies use their movement to close the gap again).
+   */
+  feyStep?: boolean;
+  /**
+   * Satyr, Yuan-Ti: Advantage on saving throws against spells and magical effects.
+   * Meaningfully reduces the risk of incapacitation by enemy spellcasters (Hold Person,
+   * Dominate Person, etc.). Particularly valuable in the Mage's Ambush scenario.
+   */
+  magicResistance?: boolean;
+  /**
+   * Yuan-Ti: Immunity to poison damage and the poisoned condition.
+   * Prevents the poisoned condition (disadvantage on attack rolls / ability checks)
+   * which is a common battlefield debuff from many enemies.
+   */
+  poisonImmunity?: boolean;
+}
+
 export interface BardCandidate {
   id: string;
   name: string;
@@ -57,6 +91,8 @@ export interface BardCandidate {
   equipment: BardEquipment[];
   specialTraits: string[];
   lore: string;
+  /** Species-level combat abilities that are mechanically resolved each turn. */
+  combatTraits?: SpeciesCombatTraits;
 }
 
 // ─── Benchmark Result Types ────────────────────────────────────────────────────
@@ -116,10 +152,28 @@ export interface BenchmarkResult {
 
 // ─── Simulation Scenarios ─────────────────────────────────────────────────────
 
+interface CombatEnemy {
+  name: string;
+  hp: number;
+  ac: number;
+  attackBonus: number;
+  damage: string;
+  count: number;
+  /**
+   * Optional: if set, this enemy can cast an incapacitating spell (e.g. Hold Person).
+   * On each of their turns, there is `spellUseChance` probability they attempt to cast.
+   * The bard must make a WIS saving throw against this DC or be incapacitated for the round:
+   * concentration breaks automatically and the bard takes an extra guaranteed hit.
+   * Species with Magic Resistance roll their WIS save with advantage.
+   */
+  spellSaveDC?: number;
+  spellUseChance?: number;
+}
+
 interface CombatScenario {
   name: string;
   difficulty: 'easy' | 'medium' | 'hard';
-  enemies: Array<{ name: string; hp: number; ac: number; attackBonus: number; damage: string; count: number }>;
+  enemies: Array<CombatEnemy>;
   rounds: number;
 }
 
@@ -153,6 +207,28 @@ const COMBAT_SCENARIOS: CombatScenario[] = [
       { name: 'Skeleton Archer', hp: 13, ac: 13, attackBonus: 4, damage: '1d6+2', count: 2 },
     ],
     rounds: 20,
+  },
+  {
+    // Scenario designed to test Magic Resistance (Satyr, Yuan-Ti) and general arcane threat.
+    // The Warlock attacks with Eldritch Blast each round and may attempt to cast Hold Person
+    // (WIS DC 14). An incapacitated bard breaks concentration and takes an extra hit.
+    // Species with Magic Resistance have advantage on the Hold Person WIS save.
+    name: "Warlock's Hold",
+    difficulty: 'hard',
+    enemies: [
+      {
+        name: 'Warlock',
+        hp: 32,
+        ac: 13,
+        attackBonus: 5,
+        damage: '1d10+3',
+        count: 1,
+        spellSaveDC: 14,
+        spellUseChance: 0.40,
+      },
+      { name: 'Cultist', hp: 9, ac: 12, attackBonus: 3, damage: '1d6+1', count: 2 },
+    ],
+    rounds: 15,
   },
 ];
 
@@ -528,6 +604,7 @@ function simulateSingleCombat(
   const cha = modifierFor(candidate.abilityScores.charisma);
   const dex = modifierFor(candidate.abilityScores.dexterity);
   const con = modifierFor(candidate.abilityScores.constitution);
+  const wis = modifierFor(candidate.abilityScores.wisdom);
   const spellAttack = cha + candidate.proficiencyBonus;
   const spellSaveDC = 8 + cha + candidate.proficiencyBonus;
 
@@ -543,6 +620,8 @@ function simulateSingleCombat(
       alive: true,
       controlled: false,  // true = incapacitated by a concentration spell
       savingThrow: 10, // enemy WIS save modifier (flat 0 bonus vs DC)
+      spellSaveDC: e.spellSaveDC,
+      spellUseChance: e.spellUseChance,
     }))
   );
 
@@ -562,6 +641,25 @@ function simulateSingleCombat(
   let luckyPointsLeft = candidate.feats.some((f) => f.name === 'Lucky') ? 3 : 0;
   // Halfling Lucky: reroll any concentration save that comes up a natural 1.
   const hasHalflingLucky = candidate.species === 'Halfling';
+
+  // ── Species Combat Traits ────────────────────────────────────────────────────
+  // Hidden Step (Firbolg): once per combat, bonus action to turn invisible for 1 round.
+  // Used defensively after the control spell lands — bard stays still, enemies attack with
+  // disadvantage. Ends at the start of the bard's next turn.
+  const hasHiddenStep = candidate.combatTraits?.hiddenStep === true;
+  let hiddenStepUsed = false;
+  let hiddenStepActive = false;
+
+  // Fey Step (Eladrin): once per combat, bonus action to teleport 30 ft out of melee.
+  // Used as an emergency repositioning when HP drops to ≤40%. The bard escapes line of
+  // engagement — enemies spend their movement closing the gap and forfeit their attacks.
+  const hasFeyStep = candidate.combatTraits?.feyStep === true;
+  let feyStepUsed = false;
+  let feyStepJustUsed = false; // true only on the exact round Fey Step is triggered
+
+  // Magic Resistance (Satyr, Yuan-Ti): advantage on saves vs. spells and magical effects.
+  // Applies to the WIS save when an enemy casts Hold Person or similar control magic.
+  const hasMagicResistance = candidate.combatTraits?.magicResistance === true;
 
   let candidateHp = candidate.maxHitPoints;
   let damageTaken = 0;
@@ -611,6 +709,28 @@ function simulateSingleCombat(
     const aliveEnemies = enemies.filter((e) => e.alive && !e.controlled);
     if (aliveEnemies.length === 0) break;
 
+    // ── Hidden Step expires at the start of the bard's turn ──────────────────
+    hiddenStepActive = false;
+
+    // ── Fey Step: emergency teleport when HP is dangerously low ──────────────
+    // The bard uses their bonus action to vanish 30 ft away. All enemies spend their
+    // movement closing the gap and cannot attack this round.
+    if (hasFeyStep && !feyStepUsed && candidateHp <= Math.floor(candidate.maxHitPoints * 0.4)) {
+      feyStepUsed = true;
+      feyStepJustUsed = true; // signal: skip enemy attacks this round only
+      // Bard still acts normally (control spell / attack); only enemy attacks are skipped.
+      // Fall through to bard's action below, then skip enemy attack phase.
+    }
+
+    // ── Hidden Step: activate after the control spell is established ──────────
+    // The bard uses their bonus action to vanish. They skip their weapon attack (sacrificing
+    // the offensive action to maintain stealth) so the invisibility persists through the
+    // enemy attack phase. Enemies must then attack with disadvantage.
+    if (hasHiddenStep && !hiddenStepUsed && concentrating && aliveEnemies.length > 0) {
+      hiddenStepActive = true;
+      hiddenStepUsed = true;
+    }
+
     // ── Candidate's turn ──────────────────────────────────────────────
     // Use control spell in round 1 if available and not yet used
     if (hasControlSpell && !controlSpellUsed && aliveEnemies.length >= 2) {
@@ -624,7 +744,8 @@ function simulateSingleCombat(
         }
       }
       controlSpellUsed = true;
-    } else {
+    } else if (!hiddenStepActive) {
+      // Hidden Step active: bard refrains from attacking to keep the invisibility.
       // Attack with weapon (Valor gets Extra Attack at 6, so 2 attacks)
       const attacks = isValorBard ? 2 : 1;
       const target = aliveEnemies[0];
@@ -648,9 +769,50 @@ function simulateSingleCombat(
     const aliveAfterTurn = enemies.filter((e) => e.alive && !e.controlled);
     if (aliveAfterTurn.length === 0) break;
 
+    // ── Fey Step: bard teleported away this round — enemies cannot reach ─────
+    // Skip the entire enemy attack phase. The bard is 30 ft out of melee range and
+    // enemies use their movement re-closing the gap rather than attacking.
+    if (feyStepJustUsed) {
+      feyStepJustUsed = false;
+      continue;
+    }
+
     // ── Enemy turns ───────────────────────────────────────────────────
     for (const enemy of aliveAfterTurn) {
-      const attackRoll = rollDie(20);
+      // ── Enemy Spellcasting: Hold Person / Control Magic ──────────────────────
+      // The enemy attempts to incapacitate the bard. Species with Magic Resistance
+      // (Satyr, Yuan-Ti) roll their WIS save with advantage.
+      if (enemy.spellSaveDC && enemy.spellUseChance && Math.random() < enemy.spellUseChance) {
+        const wisRoll1 = rollDie(20);
+        const wisRoll2 = hasMagicResistance ? rollDie(20) : wisRoll1;
+        const wisRoll = hasMagicResistance ? Math.max(wisRoll1, wisRoll2) : wisRoll1;
+        if (wisRoll + wis < enemy.spellSaveDC) {
+          // Bard is incapacitated: concentration breaks, and takes a guaranteed hit
+          if (concentrating) {
+            concentrating = false;
+            concentrationBreaks++;
+            enemies.forEach((e) => {
+              if (e.controlled) {
+                e.controlled = false;
+                e.hp = Math.ceil(e.maxHp / 2);
+              }
+            });
+          }
+          const spellHitDmg = parseDamage(enemy.damage);
+          damageTaken += spellHitDmg;
+          candidateHp -= spellHitDmg;
+          if (candidateHp <= 0) {
+            return { survived: false, roundsToEnd: round, damageTaken, concentrationBreaks };
+          }
+          continue; // Enemy used their action on the spell — no melee attack this turn
+        }
+      }
+
+      // ── Enemy Melee / Ranged Attack ──────────────────────────────────────────
+      // Hidden Step: if active, enemy attacks with disadvantage (bard is invisible).
+      const attackRoll1 = rollDie(20);
+      const attackRoll2 = hiddenStepActive ? rollDie(20) : attackRoll1;
+      const attackRoll = hiddenStepActive ? Math.min(attackRoll1, attackRoll2) : attackRoll1;
       const isCrit = attackRoll === 20 && !hasAdamantine;
 
       // Mirror Image: 1/3 chance of hitting an image instead
@@ -1013,6 +1175,10 @@ function identifyStrengths(candidate: BardCandidate, combatResults: CombatScenar
   if (candidate.species === 'Tiefling') strengths.push('Hellish Resistance: fire damage resistance');
   if (candidate.species === 'Halfling') strengths.push('Halfling Lucky: reroll natural 1s on d20 rolls');
   if (candidate.species === 'Aasimar') strengths.push('Aasimar: Healing Hands + Radiant Soul flight (1 min/day)');
+  if (candidate.combatTraits?.hiddenStep) strengths.push('Hidden Step: invisible 1 round/short rest — enemies attack with disadvantage');
+  if (candidate.combatTraits?.feyStep) strengths.push('Fey Step: teleport 30 ft/short rest — emergency escape negating one round of attacks');
+  if (candidate.combatTraits?.magicResistance) strengths.push('Magic Resistance: advantage on all saves vs. spells and magical effects');
+  if (candidate.combatTraits?.poisonImmunity) strengths.push('Poison Immunity: immune to poison damage and the poisoned condition');
   if (candidate.speed > 30) strengths.push(`Fleet of Foot: speed ${candidate.speed} ft`);
 
   return strengths;
@@ -1155,6 +1321,8 @@ export interface SpeciesTemplate {
   extraFeatSlot: boolean;
   /** Flavour traits listed in the result but not mechanically simulated. */
   specialTraits: string[];
+  /** Species abilities that are mechanically resolved turn-by-turn in combat. */
+  combatTraits?: SpeciesCombatTraits;
 }
 
 /**
@@ -1332,6 +1500,70 @@ export const LORE_BARD_SPECIES_POOL: SpeciesTemplate[] = [
       'Trance: 4-hour trance replaces 8-hour sleep',
       'Fey Ancestry: advantage on saves vs. charm, immune to magical sleep',
     ],
+  },
+
+  // ─── New Species: Fey-Origin and Magical ─────────────────────────────────────
+
+  {
+    id: 'firbolg',
+    species: 'Firbolg',
+    subspecies: 'Firbolg',
+    abilityBonuses: { strength: 2, wisdom: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Hidden Step: bonus action to become invisible for 1 round (1/short rest) — enemies must attack with disadvantage',
+      'Firbolg Magic: Detect Magic and Disguise Self 1/short rest (WIS-based)',
+      'Powerful Build: counts as Large for carry weight',
+      'Speech of Beast and Leaf: can communicate with beasts and plants; advantage on CHA checks vs. them',
+    ],
+    combatTraits: { hiddenStep: true },
+  },
+  {
+    id: 'eladrin',
+    species: 'Elf',
+    subspecies: 'Eladrin',
+    abilityBonuses: { dexterity: 2, intelligence: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Fey Step: bonus action to teleport 30 ft (1/short rest) — escape danger, negate one round of attacks',
+      'Fey Ancestry: advantage on saves vs. charm, immune to magical sleep',
+      'Darkvision 60 ft',
+      'Trance: 4-hour trance replaces 8-hour sleep',
+      'Keen Senses: proficiency in Perception',
+    ],
+    combatTraits: { feyStep: true },
+  },
+  {
+    id: 'satyr',
+    species: 'Satyr',
+    subspecies: 'Satyr',
+    abilityBonuses: { charisma: 2, dexterity: 1 },
+    speed: 35,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Magic Resistance: advantage on saving throws against ALL spells and magical effects',
+      'Reveler: proficiency in Performance and one musical instrument',
+      'Ram: 1d4+STR unarmed strike; can push target 10 ft on hit',
+      'Mirthful Leaps: add 1d8 to long and high jump distance',
+    ],
+    combatTraits: { magicResistance: true },
+  },
+  {
+    id: 'yuan-ti-pureblood',
+    species: 'Yuan-Ti',
+    subspecies: 'Yuan-Ti Pureblood',
+    abilityBonuses: { charisma: 2, intelligence: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Magic Resistance: advantage on saving throws against ALL spells and magical effects',
+      'Poison Immunity: immune to poison damage and the poisoned condition',
+      'Innate Spellcasting: Poison Spray at will; Animal Friendship unlimited (beasts only); Suggestion + Charm Person 1/long rest (CHA-based)',
+      'Darkvision 60 ft',
+    ],
+    combatTraits: { magicResistance: true, poisonImmunity: true },
   },
 ];
 
@@ -1632,6 +1864,7 @@ function buildLoreBardCandidate(
     ],
     lore: `A College of Lore bard of ${species.subspecies} heritage. Every choice in this ` +
       `build was evaluated by Savras — The All-Seeing — across hundreds of simulated encounters.`,
+    combatTraits: species.combatTraits,
   };
 }
 

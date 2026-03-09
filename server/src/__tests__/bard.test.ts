@@ -167,9 +167,9 @@ describe('BardBenchmarkService - benchmark simulation', () => {
     });
   });
 
-  it('each result has 3 combat scenario details', () => {
+  it('each result has 4 combat scenario details', () => {
     benchmarkResults.forEach((r) => {
-      expect(r.combatDetails).toHaveLength(3);
+      expect(r.combatDetails).toHaveLength(4);
     });
   });
 
@@ -608,9 +608,9 @@ describe('POST /api/bard/instantiate', () => {
 // ─── Lore Bard Exploration System Tests ──────────────────────────────────────
 
 describe('BardBenchmarkService - exploration pools', () => {
-  it('species pool returns 8 options', () => {
+  it('species pool returns 12 options', () => {
     const pool = getLoreBardSpeciesPool();
-    expect(pool).toHaveLength(8);
+    expect(pool).toHaveLength(12);
   });
 
   it('each species has required fields', () => {
@@ -683,6 +683,45 @@ describe('BardBenchmarkService - exploration pools', () => {
     const names = getLoreBardMagicItemPool().map((i) => i.name);
     expect(new Set(names).size).toBe(names.length);
   });
+
+  it('Firbolg species has hiddenStep combat trait', () => {
+    const pool = getLoreBardSpeciesPool();
+    const firbolg = pool.find((s) => s.id === 'firbolg');
+    expect(firbolg).toBeDefined();
+    expect(firbolg?.combatTraits?.hiddenStep).toBe(true);
+  });
+
+  it('Eladrin species has feyStep combat trait', () => {
+    const pool = getLoreBardSpeciesPool();
+    const eladrin = pool.find((s) => s.id === 'eladrin');
+    expect(eladrin).toBeDefined();
+    expect(eladrin?.combatTraits?.feyStep).toBe(true);
+  });
+
+  it('Satyr species has magicResistance combat trait', () => {
+    const pool = getLoreBardSpeciesPool();
+    const satyr = pool.find((s) => s.id === 'satyr');
+    expect(satyr).toBeDefined();
+    expect(satyr?.combatTraits?.magicResistance).toBe(true);
+  });
+
+  it('Yuan-Ti Pureblood has magicResistance and poisonImmunity combat traits', () => {
+    const pool = getLoreBardSpeciesPool();
+    const yuanTi = pool.find((s) => s.id === 'yuan-ti-pureblood');
+    expect(yuanTi).toBeDefined();
+    expect(yuanTi?.combatTraits?.magicResistance).toBe(true);
+    expect(yuanTi?.combatTraits?.poisonImmunity).toBe(true);
+  });
+
+  it('species with combat traits list them in specialTraits as well', () => {
+    const pool = getLoreBardSpeciesPool();
+    const firbolg = pool.find((s) => s.id === 'firbolg')!;
+    const satyr = pool.find((s) => s.id === 'satyr')!;
+    // Hidden Step should be described in specialTraits
+    expect(firbolg.specialTraits.some((t) => t.toLowerCase().includes('hidden step'))).toBe(true);
+    // Magic Resistance should be described in specialTraits
+    expect(satyr.specialTraits.some((t) => t.toLowerCase().includes('magic resistance'))).toBe(true);
+  });
 });
 
 describe('BardBenchmarkService - build generation', () => {
@@ -753,6 +792,39 @@ describe('BardBenchmarkService - build generation', () => {
     // Verify that at least one VH build has 3 feats
     expect(vhBuilds.some((b) => b.feats.length === 3)).toBe(true);
   });
+
+  it('Firbolg builds carry hiddenStep combat trait through to BardCandidate', () => {
+    const firbolgBuilds = builds.filter((b) => b.subspecies === 'Firbolg');
+    expect(firbolgBuilds.length).toBeGreaterThan(0);
+    firbolgBuilds.forEach((b) => {
+      expect(b.combatTraits?.hiddenStep).toBe(true);
+    });
+  });
+
+  it('Eladrin builds carry feyStep combat trait through to BardCandidate', () => {
+    const eladrinBuilds = builds.filter((b) => b.subspecies === 'Eladrin');
+    expect(eladrinBuilds.length).toBeGreaterThan(0);
+    eladrinBuilds.forEach((b) => {
+      expect(b.combatTraits?.feyStep).toBe(true);
+    });
+  });
+
+  it('Satyr builds carry magicResistance combat trait through to BardCandidate', () => {
+    const satyrBuilds = builds.filter((b) => b.subspecies === 'Satyr');
+    expect(satyrBuilds.length).toBeGreaterThan(0);
+    satyrBuilds.forEach((b) => {
+      expect(b.combatTraits?.magicResistance).toBe(true);
+    });
+  });
+
+  it('Yuan-Ti builds carry magicResistance and poisonImmunity through to BardCandidate', () => {
+    const yuanTiBuilds = builds.filter((b) => b.subspecies === 'Yuan-Ti Pureblood');
+    expect(yuanTiBuilds.length).toBeGreaterThan(0);
+    yuanTiBuilds.forEach((b) => {
+      expect(b.combatTraits?.magicResistance).toBe(true);
+      expect(b.combatTraits?.poisonImmunity).toBe(true);
+    });
+  });
 });
 
 describe('BardBenchmarkService - exploration runner', () => {
@@ -802,8 +874,8 @@ describe('BardBenchmarkService - exploration runner', () => {
     });
   });
 
-  it('bySpecies contains all 8 species options', () => {
-    expect(Object.keys(exploration.bySpecies).length).toBe(8);
+  it('bySpecies contains all 12 species options', () => {
+    expect(Object.keys(exploration.bySpecies).length).toBe(12);
   });
 
   it('each species entry has a topBuild and averageCompositeScore', () => {
@@ -859,7 +931,7 @@ describe('GET /api/bard/explore/pools', () => {
   it('returns 200 with species, feats, and magic items pools', async () => {
     const res = await request(app).get('/api/bard/explore/pools');
     expect(res.status).toBe(200);
-    expect(res.body.pools.species.count).toBe(8);
+    expect(res.body.pools.species.count).toBe(12);
     expect(res.body.pools.feats.count).toBe(12);
     expect(res.body.pools.magicItems.count).toBe(8);
   });
@@ -951,10 +1023,10 @@ describe('GET /api/bard/explore', () => {
     });
   }, 30000);
 
-  it('iterations cap is respected (max 200)', async () => {
+  it('iterations cap is respected (max 50)', async () => {
     const res = await request(app).get('/api/bard/explore?iterations=9999&top=3');
     expect(res.status).toBe(200);
-    expect(res.body.summary.iterationsPerScenario).toBeLessThanOrEqual(200);
+    expect(res.body.summary.iterationsPerScenario).toBeLessThanOrEqual(50);
   }, 30000);
 
   it('invalid iterations parameter defaults gracefully', async () => {

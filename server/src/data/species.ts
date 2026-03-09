@@ -632,6 +632,139 @@ export const species: Species[] = [
       },
     ],
   },
+
+  // ─── Additional Species (Volo's Guide / Mordenkainen's) ───────────────────
+
+  {
+    name: "Firbolg",
+    traits:
+      "Firbolgs are giant-kin who prefer to live in harmony with the natural world. Reclusive and peaceful, they are among the most powerful of the fey-touched races — yet they resort to violence only as a last measure. Their ability to vanish from sight makes them ghostly presences on the battlefield.",
+    abilityScoreBonuses: { strength: 2, wisdom: 1 },
+    speed: 30,
+    size: "Medium",
+    languages: ["Common", "Elvish", "Giant"],
+    darkvision: 0,
+    specialAbilities: [
+      {
+        name: "Hidden Step",
+        description:
+          "As a bonus action, you can magically turn invisible until the start of your next turn or until you attack, make a damage roll, or force someone to make a saving throw. Once you use this trait, you can't use it again until you finish a short or long rest. While invisible, attacks against you have disadvantage and you effectively cannot be targeted by enemies who rely on sight.",
+      },
+      {
+        name: "Firbolg Magic",
+        description:
+          "You can cast Detect Magic and Disguise Self with this trait, using Wisdom as your spellcasting ability. Once you cast either spell this way, you can't cast it again with this trait until you finish a short or long rest. When you use Disguise Self, you can seem up to 3 feet shorter than normal, allowing you to disguise yourself as a member of a smaller humanoid race.",
+      },
+      {
+        name: "Powerful Build",
+        description:
+          "You count as one size larger when determining your carrying capacity and the weight you can push, drag, or lift.",
+      },
+      {
+        name: "Speech of Beast and Leaf",
+        description:
+          "You have the ability to communicate in a limited manner with beasts and plants. They can understand the meaning of your words, though you have no special ability to understand them in return. You have advantage on all Charisma checks you make to influence them.",
+      },
+    ],
+  },
+
+  {
+    name: "Eladrin",
+    traits:
+      "Eladrin are elves native to the Feywild, a realm of beauty, unpredictable emotion, and powerful magic. They embody one of the four seasons: spring, summer, autumn, or winter — each reflecting their mood and personality. Their Fey Step ability lets them vanish and reappear in the blink of an eye.",
+    abilityScoreBonuses: { dexterity: 2, intelligence: 1 },
+    speed: 30,
+    size: "Medium",
+    languages: ["Common", "Elvish"],
+    darkvision: 60,
+    specialAbilities: [
+      {
+        name: "Fey Step",
+        description:
+          "As a bonus action, you can magically teleport up to 30 feet to an unoccupied space you can see. Once you use this trait, you can't use it again until you finish a short or long rest. You may use this ability to escape melee, reposition out of danger, or close distance without provoking opportunity attacks.",
+      },
+      {
+        name: "Fey Ancestry",
+        description:
+          "You have advantage on saving throws against being charmed, and magic can't put you to sleep.",
+      },
+      {
+        name: "Trance",
+        description:
+          "Elves don't need to sleep. Instead, they meditate deeply for 4 hours a day. While meditating, you can dream after a fashion; gaining the same benefit as 8 hours of sleep.",
+      },
+      {
+        name: "Keen Senses",
+        description: "You have proficiency in the Perception skill.",
+      },
+      {
+        name: "Seasonal Magic",
+        description:
+          "Depending on season, you know additional spells: Spring — Longstrider, Sleep; Summer — Burning Hands, Faerie Fire; Autumn — Calm Emotions, Sleep; Winter — Sleet Storm, Sleep. These are cast once per long rest using Intelligence as the spellcasting ability.",
+      },
+    ],
+  },
+
+  {
+    name: "Satyr",
+    traits:
+      "Satyrs are residents of the Feywild who wander its lush forests, spending their days in revelry, music, and mischief. Their connection to the Feywild grants them remarkable resistance to magic, making them exceptionally difficult to ensnare with enchantments, illusions, or any other magical effect.",
+    abilityScoreBonuses: { charisma: 2, dexterity: 1 },
+    speed: 35,
+    size: "Medium",
+    languages: ["Common", "Elvish", "Sylvan"],
+    darkvision: 0,
+    specialAbilities: [
+      {
+        name: "Magic Resistance",
+        description:
+          "You have advantage on saving throws against spells and other magical effects. This resistance applies to all magical saving throws — enchantments, illusions, transmutations, evocations, and more — making you one of the most magically resilient species in existence.",
+      },
+      {
+        name: "Ram",
+        description:
+          "You can use your head and horns to make unarmed strikes. If you hit with them, you deal bludgeoning damage equal to 1d4 + your Strength modifier, instead of the bludgeoning damage normal for an unarmed strike. On a hit, you can choose to push the target up to 10 feet away from you (no action required).",
+      },
+      {
+        name: "Mirthful Leaps",
+        description:
+          "Whenever you make a long or high jump, you can roll a d8 and add the number rolled to the number of feet you cover, even when making a standing jump. This extra distance costs movement as normal.",
+      },
+      {
+        name: "Reveler",
+        description:
+          "You have proficiency with the Performance skill and with one musical instrument of your choice. You also have advantage on saving throws against being frightened.",
+      },
+    ],
+  },
+
+  {
+    name: "Yuan-Ti Pureblood",
+    traits:
+      "Yuan-ti purebloods are the most human-seeming of all yuan-ti varieties. Their appearance is almost entirely humanoid, with only subtle signs of their serpentine heritage. Their minds are as cold as their masters', and they have inherited the yuan-ti's extraordinary resistance to magic.",
+    abilityScoreBonuses: { charisma: 2, intelligence: 1 },
+    speed: 30,
+    size: "Medium",
+    languages: ["Common", "Abyssal", "Draconic"],
+    darkvision: 60,
+    specialAbilities: [
+      {
+        name: "Magic Resistance",
+        description:
+          "You have advantage on saving throws against spells and other magical effects. This serpentine heritage grants you an innate resistance to magical coercion and arcane attacks that few creatures can match.",
+      },
+      {
+        name: "Innate Spellcasting",
+        description:
+          "You know the Poison Spray cantrip. You can cast Animal Friendship an unlimited number of times with this trait, but you can target only beasts when you do so. You can also cast Suggestion and Charm Person, each once per long rest. Charisma is your spellcasting ability for these spells.",
+      },
+      {
+        name: "Poison Immunity",
+        description:
+          "You are immune to poison damage and the poisoned condition.",
+      },
+    ],
+  },
 ];
 
 export function getSpecies(name: string): Species | undefined {

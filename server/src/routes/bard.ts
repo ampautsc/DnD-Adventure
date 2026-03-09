@@ -283,9 +283,9 @@ router.get('/explore/pools', (_req: Request, res: Response) => {
  * Query parameters:
  *   - top      (number, default 50): How many top builds to include in the ranked list.
  *              Set to 0 to return all builds.
- *   - iterations (number, default 25, max 200): Simulation iterations per scenario.
+ *   - iterations (number, default 25, max 50): Simulation iterations per scenario.
  *              Higher = more accurate but slower. 25 gives directional results in ~5s;
- *              200 matches the full benchmark accuracy (takes ~30s).
+ *              50 gives good accuracy across the expanded 12-species matrix (~15s).
  *
  * Response includes:
  *   - summary: build count, iterations, fixed subclass
@@ -302,7 +302,7 @@ router.get('/explore', (req: Request, res: Response) => {
     const rawTop = parseInt(String(req.query['top'] ?? '50'), 10);
     const rawIter = parseInt(String(req.query['iterations'] ?? '25'), 10);
     const topN = isNaN(rawTop) || rawTop < 0 ? 50 : rawTop;
-    const iterations = isNaN(rawIter) || rawIter < 1 ? 25 : Math.min(rawIter, 200);
+    const iterations = isNaN(rawIter) || rawIter < 1 ? 25 : Math.min(rawIter, 50);
 
     const result = runLoreBardExploration(iterations, topN);
     res.json(result);
