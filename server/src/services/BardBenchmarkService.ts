@@ -1776,6 +1776,11 @@ export interface BardExplorationResult {
     level: number;
     /** The scoring weights that were applied when producing this result. */
     scoringWeightsUsed: ScoringWeights;
+    /**
+     * The species ID filter applied to the build pool, or null when no filter was used.
+     * When set, only builds whose species matches this ID were evaluated and ranked.
+     */
+    speciesFilter: string | null;
   };
   topBuilds: BardBuildResult[];
   bySpecies: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
@@ -2358,6 +2363,10 @@ export function generateLoreBardBuilds(): BardCandidate[] {
  * @param topScenarioRankings - When `includeScenarioRankings` is true, limit each
  *   `rankedBuilds` array to this many entries (the top N by scenario score).
  *   `0` (default) returns every build. Ignored when `includeScenarioRankings` is false.
+ * @param speciesFilter - When provided, restricts the build pool to builds whose species
+ *   matches the given species ID (e.g. `'half-elf-standard'`). Only builds for that species
+ *   are evaluated and ranked. `summary.speciesFilter` echoes the applied filter.
+ *   Omit or pass `undefined` to evaluate all species (default behaviour).
  */
 export function runLoreBardExploration(
   iterationsPerScenario = 25,
@@ -2365,9 +2374,13 @@ export function runLoreBardExploration(
   weights?: Partial<ScoringWeights> | string,
   includeScenarioRankings = false,
   topScenarioRankings = 0,
+  speciesFilter?: string,
 ): BardExplorationResult {
   const resolvedWeights = resolveWeights(weights);
-  const builds = generateLoreBardBuilds();
+  const fullPool = generateLoreBardBuilds();
+  const builds = speciesFilter
+    ? fullPool.filter((c) => c.id.startsWith(`lore-${speciesFilter}__`))
+    : fullPool;
 
   // Run benchmarks for every build
   const rawResults = builds.map((candidate) => {
@@ -2551,6 +2564,7 @@ export function runLoreBardExploration(
       subclassFixed: 'College of Lore',
       level: 8,
       scoringWeightsUsed: resolvedWeights,
+      speciesFilter: speciesFilter ?? null,
     },
     topBuilds,
     bySpecies,

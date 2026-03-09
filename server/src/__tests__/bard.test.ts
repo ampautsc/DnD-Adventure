@@ -2596,3 +2596,112 @@ describe('Profile usage tracking', () => {
     expect(getRes.status).toBe(404);
   });
 });
+
+// ─── speciesFilter unit tests ──────────────────────────────────────────────────
+
+describe('BardBenchmarkService - speciesFilter parameter', () => {
+  it('without speciesFilter, totalBuildsEvaluated equals the full build matrix', () => {
+    const result = runLoreBardExploration(3, 0);
+    const fullCount = generateLoreBardBuilds().length;
+    expect(result.summary.totalBuildsEvaluated).toBe(fullCount);
+  });
+
+  it('speciesFilter limits totalBuildsEvaluated to builds of that species only', () => {
+    const result = runLoreBardExploration(3, 0, undefined, false, 0, 'half-elf-standard');
+    const halfElfBuilds = generateLoreBardBuilds().filter((b) =>
+      b.id.startsWith('lore-half-elf-standard__'),
+    );
+    expect(result.summary.totalBuildsEvaluated).toBe(halfElfBuilds.length);
+    expect(result.summary.totalBuildsEvaluated).toBeGreaterThan(0);
+  });
+
+  it('topBuilds contain only builds from the filtered species', () => {
+    const result = runLoreBardExploration(3, 10, undefined, false, 0, 'tiefling-standard');
+    result.topBuilds.forEach((build) => {
+      expect(build.subspecies).toBe('Standard Tiefling');
+    });
+  });
+
+  it('bySpecies contains only the filtered species key', () => {
+    const result = runLoreBardExploration(3, 0, undefined, false, 0, 'lightfoot-halfling');
+    const keys = Object.keys(result.bySpecies);
+    expect(keys.length).toBe(1);
+    expect(keys[0]).toContain('Halfling');
+  });
+
+  it('summary.speciesFilter echoes the applied filter ID', () => {
+    const result = runLoreBardExploration(3, 0, undefined, false, 0, 'wood-elf');
+    expect(result.summary.speciesFilter).toBe('wood-elf');
+  });
+
+  it('summary.speciesFilter is null when no filter is provided', () => {
+    const result = runLoreBardExploration(3, 5);
+    expect(result.summary.speciesFilter).toBeNull();
+  });
+});
+
+// ─── speciesFilter API tests ───────────────────────────────────────────────────
+
+describe('GET /api/bard/explore - speciesFilter parameter', () => {
+  it('?speciesFilter=half-elf-standard limits totalBuildsEvaluated to that species', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&speciesFilter=half-elf-standard',
+    );
+    expect(res.status).toBe(200);
+    const expectedCount = generateLoreBardBuilds().filter((b) =>
+      b.id.startsWith('lore-half-elf-standard__'),
+    ).length;
+    expect(res.body.summary.totalBuildsEvaluated).toBe(expectedCount);
+  }, 30000);
+
+  it('topBuilds from ?speciesFilter=tiefling-standard contain only that species', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=10&speciesFilter=tiefling-standard',
+    );
+    expect(res.status).toBe(200);
+    (res.body.topBuilds as Array<{ subspecies: string }>).forEach((build) => {
+      expect(build.subspecies).toBe('Standard Tiefling');
+    });
+  }, 30000);
+
+  it('summary.speciesFilter reflects the applied filter', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&speciesFilter=wood-elf',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.summary.speciesFilter).toBe('wood-elf');
+  }, 30000);
+
+  it('summary.speciesFilter is null when no filter is provided', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=3&top=5');
+    expect(res.status).toBe(200);
+    expect(res.body.summary.speciesFilter).toBeNull();
+  }, 30000);
+
+  it('invalid speciesFilter value is ignored (all builds returned)', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&speciesFilter=invalid-species',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.summary.speciesFilter).toBeNull();
+    const fullCount = generateLoreBardBuilds().length;
+    expect(res.body.summary.totalBuildsEvaluated).toBe(fullCount);
+  }, 30000);
+
+  it('speciesFilter combined with scenarioFilter works correctly', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore?iterations=3&top=5&speciesFilter=half-elf-standard&scenarioFilter=combat',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.summary.speciesFilter).toBe('half-elf-standard');
+    expect(res.body.summary.scenarioFilter).toBe('combat');
+    // All byScenario entries must be combat category
+    Object.values(res.body.byScenario as Record<string, { scenarioCategory: string }>).forEach(
+      (entry) => { expect(entry.scenarioCategory).toBe('combat'); },
+    );
+    // topBuilds must be from the filtered species
+    (res.body.topBuilds as Array<{ subspecies: string }>).forEach((build) => {
+      expect(build.subspecies).toBe('Standard Half-Elf');
+    });
+  }, 30000);
+});
