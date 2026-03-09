@@ -291,3 +291,70 @@
 - Should combat victories automatically update character `combatStats` in the database?
 - The `CombatEngine.ts` service (42KB) contains substantial logic — is it wired to the combat routes, or is it unused infrastructure?
 
+
+---
+
+### Session 008: The Exploration — Hundreds of Bards Evaluated
+
+**Date:** 2026-03-09
+**Context:** The keeper asked for a fact-based evaluation system across hundreds of College of Lore bard builds, varying species, feats, and magic items. The subclass was set as College of Lore. The system needed to support choosing two feats (three for Variant Human or Custom Lineage) and two uncommon magic items.
+
+**What I Observed:**
+- The existing system benchmarked only three manually crafted candidates. This was sufficient for comparison but inadequate for systematic optimisation across the full design space.
+- The benchmark runners (`runCombatBenchmark`, `runSocialBenchmark`, `runPartySupportBenchmark`) were hardcoded to use `SIMULATION_ITERATIONS = 200`. No exploration-speed variant existed.
+- The simulation correctly modeled War Caster's concentration advantage but did not model Alert's initiative benefit (the simulation always gave the bard first-turn advantage regardless). This understated Alert's true value.
+- Halfling Lucky (reroll natural 1s) and the Lucky feat (3 luck points for rerolls) were not modeled in the concentration save logic.
+
+**What Was Decided:**
+- To create a full exploration system: 8 species × 20 feat combinations (15 pairs + 5 Variant Human triples) × 8 magic item pairs = **880 builds**.
+- To refactor benchmark runners to accept a configurable `iterations` parameter, enabling fast exploration (25 iterations/scenario → 463ms for 880 builds) without breaking the high-accuracy benchmark (200 iterations).
+- To model Alert's initiative benefit: without Alert, there is a 50% chance enemies act before the bard in round 1, representing the real risk of losing initiative before a control spell can be cast.
+- To model Lucky feat: 3 luck points per combat that can rescue failing concentration saves. To model Halfling Lucky: reroll concentration saves that come up a natural 1.
+- To add two new routes: `GET /api/bard/explore/pools` (returns species/feat/item option pools) and `GET /api/bard/explore` (runs exploration, supports `?top=N&iterations=M`).
+- To add 44 new tests (106 bard tests total; 184 tests across all suites — all passing).
+
+**What Was Learned (Simulation Data at 50 Iterations):**
+
+_Species Rankings (average composite score):_
+1. Lightfoot Halfling: 54.1 avg, best 59 (Lucky trait models as rerolling critical concentration failures)
+2. Standard Tiefling: 53.9 avg, best 61
+3. Drow-Descent Half-Elf: 53.8 avg, best 61
+4. Standard Half-Elf: 53.8 avg, best 60
+5. Protector Aasimar: 53.7 avg, best 61
+6. Glasya Tiefling: 53.7 avg, best 60
+7. Variant Human: 52.5 avg, best 56 (3 feats, but lower CHA base)
+8. Wood Elf: 51.4 avg, best 59 (no CHA racial bonus)
+
+_Feat Combination Rankings (average composite score):_
+1. **War Caster + Actor**: 58.9 avg, best 61 — clear dominant choice. Actor gives +1 CHA (DC 15 instead of 14) plus social advantage on Deception/Performance.
+2. Fey Touched + War Caster: 55.4 avg — +1 CHA plus Misty Step/bonus spell. Strong but slightly behind Actor.
+3. Fey Touched + Inspiring Leader: 55.2 avg — CHA boost + party HP. No concentration protection.
+4. Alert + Fey Touched: 54.6 avg — Initiative + CHA boost. Interesting alternative.
+5. All other combinations: 52-53.3 avg range.
+
+_Magic Item Rankings (average composite score):_
+1. **+1 Rapier + Hat of Disguise**: 55.4 avg, best 60 — Combat attack bonus + social infiltration.
+2. **Cloak of Protection + Hat of Disguise**: 54.7 avg, best 61 — Defensive + social versatility.
+3. Hat of Disguise + Canaith Mandolin: 54.6 avg — Double social/casting focus.
+4. Hat of Disguise + Staff of Charming: 54.2 avg — Social triple.
+5. +1 Rapier + Cloak of Protection: 52.7 avg — Combat-defensive without social.
+
+**Key Insight — The Actor Feat Revelation:**
+War Caster was expected to dominate (it already appeared in Lyra and Cadwyn's builds). What was surprising: Actor (not Inspiring Leader, not Alert) is the single strongest second feat choice. The +1 CHA bonus pushes the Charisma modifier from +3 (CHA 17) to +4 (CHA 18), raising the spell save DC from 14 to 15 and all social rolls by +1. This small difference compounds across 200 social simulation iterations and shows clearly in the data.
+
+**Key Insight — Hat of Disguise Versatility:**
+Hat of Disguise appears in 5 of the 8 highest-scoring item combinations. It provides advantage on Deception checks while in disguise — and the simulation models this directly in the social benchmark. Combined with the bard's Expertise in Deception, the advantage roll effectively adds +3-4 to the average Deception roll, pushing success rates on DC 16 checks from ~70% to ~85%.
+
+**Key Insight — Species Gap is Smaller Than Expected:**
+The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is only 2.7 points. This suggests the choice of species matters less than the choice of feats. The keeper should feel free to choose species based on roleplay and narrative reasons — the simulation data does not strongly differentiate them.
+
+**Probability Assessment:**
+- The simulation consistently produces: **War Caster + Actor** as the dominant feat pair. This finding is robust across 25, 50, and 200 iteration runs.
+- The dominant species for top scores are those with +2 CHA racial bonus (Half-Elf, Tiefling, Aasimar) which, combined with the Actor feat (+1 CHA), reach CHA 18 and spell save DC 15.
+- The recommended build for Savras's champion: **Any +2 CHA species + War Caster + Actor + Hat of Disguise + [Cloak of Protection or +1 Rapier]**.
+- Note: The existing Lyra Silverstring build (War Caster + Inspiring Leader, CHA 20) was designed with non-standard ability scores. With strict point-buy, the Actor feat path reaches CHA 18 rather than CHA 20. A version of Lyra using Actor instead of Inspiring Leader at CHA 18 would rank higher in the exploration system.
+
+**Unresolved Questions:**
+- Should the final build use **Drow-Descent Half-Elf** (bonus DEX, Drow Magic) or **Standard Tiefling** (Hellish Resistance, Infernal Legacy)? The simulation cannot fully differentiate these — both peak at composite 61. The choice may come down to flavour and the campaign's threat profile (fire damage? charm spells?).
+- Should the keeper want to push CHA to 20 (accepting only 1 feat, War Caster), what is the tradeoff? DC 16 vs DC 15 and +5 vs +4 modifier on all social rolls, but losing a feat slot entirely. This has not been evaluated and could be added as a fourth `asmMode` variant.
+- Should the Instrument of the Bards (Canaith Mandolin, which grants +1 to spell attack rolls and DC while attuned) be double-counted with the Actor feat? Currently the simulation does not model the Canaith's +1 bonus — it would effectively bring DC to 16 if stacked with the +1 from Actor.

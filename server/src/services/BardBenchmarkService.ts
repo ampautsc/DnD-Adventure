@@ -555,6 +555,13 @@ function simulateSingleCombat(
   const hasMirrorImage = candidate.spells.some((s) => s.name === 'Mirror Image');
   const isValorBard = candidate.subclass === 'College of Valor';
   const hasWarCaster = candidate.feats.some((f) => f.name === 'War Caster');
+  // Alert: bard always wins initiative — guaranteed to act before enemies in round 1.
+  // Without Alert there is a 50% chance enemies strike first in round 1.
+  const hasAlert = candidate.feats.some((f) => f.name === 'Alert');
+  // Lucky feat: 3 luck points per combat — spend to reroll a failing concentration save.
+  let luckyPointsLeft = candidate.feats.some((f) => f.name === 'Lucky') ? 3 : 0;
+  // Halfling Lucky: reroll any concentration save that comes up a natural 1.
+  const hasHalflingLucky = candidate.species === 'Halfling';
 
   let candidateHp = candidate.maxHitPoints;
   let damageTaken = 0;
@@ -578,6 +585,26 @@ function simulateSingleCombat(
   const attackBonus = dex + candidate.proficiencyBonus + weaponBonus;
 
   let roundsElapsed = 0;
+
+  // ── Initiative: without Alert, enemies have a 50% chance to act before the bard ──
+  // This models the real-world risk of losing initiative and taking hits before the
+  // bard can cast a control spell.
+  if (!hasAlert && rollDie(2) === 1) {
+    // Enemies act first — bard hasn't moved yet, no Mirror Image up
+    for (const enemy of enemies.filter((e) => e.alive)) {
+      const attackRoll = rollDie(20);
+      const isCrit = attackRoll === 20 && !hasAdamantine;
+      const hits = isCrit || (attackRoll + enemy.attackBonus) >= effectiveAC;
+      if (hits) {
+        const dmg = parseDamage(enemy.damage) + (isCrit ? parseDamage(enemy.damage.split('+')[0]) : 0);
+        damageTaken += dmg;
+        candidateHp -= dmg;
+        if (candidateHp <= 0) {
+          return { survived: false, roundsToEnd: 0, damageTaken, concentrationBreaks };
+        }
+      }
+    }
+  }
 
   for (let round = 1; round <= scenario.rounds; round++) {
     roundsElapsed = round;
@@ -650,9 +677,21 @@ function simulateSingleCombat(
         // Bards have no CON save proficiency — roll is d20 + CON modifier only.
         if (concentrating) {
           const conSaveDC = Math.max(10, Math.floor(dmg / 2));
-          const conRoll = hasWarCaster
-            ? Math.max(rollDie(20) + con, rollDie(20) + con)
-            : rollDie(20) + con;
+          // Roll dice, applying Halfling Lucky (reroll natural 1s) to each die independently,
+          // then apply War Caster advantage (take the higher of two results).
+          const rollWithLuck = (): number => {
+            const raw = rollDie(20);
+            return (hasHalflingLucky && raw === 1) ? rollDie(20) : raw;
+          };
+          let conRoll = hasWarCaster
+            ? Math.max(rollWithLuck() + con, rollWithLuck() + con)
+            : rollWithLuck() + con;
+          // Lucky feat: spend a luck point to reroll a failing save
+          if (conRoll < conSaveDC && luckyPointsLeft > 0) {
+            luckyPointsLeft--;
+            const luckyReroll = rollWithLuck() + con;
+            conRoll = Math.max(conRoll, luckyReroll);
+          }
           if (conRoll < conSaveDC) {
             concentrating = false;
             concentrationBreaks++;
@@ -835,22 +874,22 @@ function simulateSinglePartySupport(
   return { inspirationsGiven, healingDealt, featureActivations };
 }
 
-function runPartySupportBenchmark(candidate: BardCandidate): PartySupportScenarioResult[] {
+function runPartySupportBenchmark(candidate: BardCandidate, iterations = SIMULATION_ITERATIONS): PartySupportScenarioResult[] {
   return PARTY_SUPPORT_SCENARIOS.map((scenario) => {
     let totalInspirations = 0;
     let totalHealing = 0;
     let totalFeatures = 0;
 
-    for (let i = 0; i < SIMULATION_ITERATIONS; i++) {
+    for (let i = 0; i < iterations; i++) {
       const result = simulateSinglePartySupport(candidate, scenario);
       totalInspirations += result.inspirationsGiven;
       totalHealing += result.healingDealt;
       totalFeatures += result.featureActivations;
     }
 
-    const avgInspirations = totalInspirations / SIMULATION_ITERATIONS;
-    const avgHealing = totalHealing / SIMULATION_ITERATIONS;
-    const avgFeatures = totalFeatures / SIMULATION_ITERATIONS;
+    const avgInspirations = totalInspirations / iterations;
+    const avgHealing = totalHealing / iterations;
+    const avgFeatures = totalFeatures / iterations;
 
     // Normalise to 0–100. Calibrated against observed maximums across all candidates:
     // inspirations ≈ 10, healing ≈ 35 HP, feature activations ≈ 14.
@@ -862,7 +901,7 @@ function runPartySupportBenchmark(candidate: BardCandidate): PartySupportScenari
     return {
       scenarioName: scenario.name,
       type: scenario.type,
-      iterationsRun: SIMULATION_ITERATIONS,
+      iterationsRun: iterations,
       avgInspirationsGiven: parseFloat(avgInspirations.toFixed(1)),
       avgHealingDealt: parseFloat(avgHealing.toFixed(1)),
       avgFeatureActivations: parseFloat(avgFeatures.toFixed(1)),
@@ -875,14 +914,14 @@ function runPartySupportBenchmark(candidate: BardCandidate): PartySupportScenari
 
 const SIMULATION_ITERATIONS = 200;
 
-function runCombatBenchmark(candidate: BardCandidate): CombatScenarioResult[] {
+function runCombatBenchmark(candidate: BardCandidate, iterations = SIMULATION_ITERATIONS): CombatScenarioResult[] {
   return COMBAT_SCENARIOS.map((scenario) => {
     let wins = 0;
     let totalRounds = 0;
     let totalDamage = 0;
     let totalConcentrationBreaks = 0;
 
-    for (let i = 0; i < SIMULATION_ITERATIONS; i++) {
+    for (let i = 0; i < iterations; i++) {
       const result = simulateSingleCombat(candidate, scenario);
       if (result.survived) wins++;
       totalRounds += result.roundsToEnd;
@@ -890,10 +929,10 @@ function runCombatBenchmark(candidate: BardCandidate): CombatScenarioResult[] {
       totalConcentrationBreaks += result.concentrationBreaks;
     }
 
-    const survivalRate = wins / SIMULATION_ITERATIONS;
-    const avgRounds = totalRounds / SIMULATION_ITERATIONS;
-    const avgDamage = totalDamage / SIMULATION_ITERATIONS;
-    const avgConcentrationBreaks = totalConcentrationBreaks / SIMULATION_ITERATIONS;
+    const survivalRate = wins / iterations;
+    const avgRounds = totalRounds / iterations;
+    const avgDamage = totalDamage / iterations;
+    const avgConcentrationBreaks = totalConcentrationBreaks / iterations;
 
     // Score: weighted by survival rate + speed of victory
     const speedBonus = scenario.difficulty === 'hard' ? 0 : (scenario.rounds - avgRounds) / scenario.rounds;
@@ -902,9 +941,9 @@ function runCombatBenchmark(candidate: BardCandidate): CombatScenarioResult[] {
     return {
       scenarioName: scenario.name,
       difficulty: scenario.difficulty,
-      iterationsRun: SIMULATION_ITERATIONS,
+      iterationsRun: iterations,
       wins,
-      losses: SIMULATION_ITERATIONS - wins,
+      losses: iterations - wins,
       averageRoundsToVictory: parseFloat(avgRounds.toFixed(1)),
       averageDamageTaken: parseFloat(avgDamage.toFixed(1)),
       averageConcentrationBreaks: parseFloat(avgConcentrationBreaks.toFixed(2)),
@@ -914,28 +953,28 @@ function runCombatBenchmark(candidate: BardCandidate): CombatScenarioResult[] {
   });
 }
 
-function runSocialBenchmark(candidate: BardCandidate): SocialScenarioResult[] {
+function runSocialBenchmark(candidate: BardCandidate, iterations = SIMULATION_ITERATIONS): SocialScenarioResult[] {
   return SOCIAL_SCENARIOS.map((scenario) => {
     let successes = 0;
     let critSuccesses = 0;
     let totalRoll = 0;
 
-    for (let i = 0; i < SIMULATION_ITERATIONS; i++) {
+    for (let i = 0; i < iterations; i++) {
       const result = simulateSingleSocial(candidate, scenario);
       if (result.success) successes++;
       if (result.isCritSuccess) critSuccesses++;
       totalRoll += result.roll;
     }
 
-    const successRate = successes / SIMULATION_ITERATIONS;
-    const avgRoll = totalRoll / SIMULATION_ITERATIONS;
+    const successRate = successes / iterations;
+    const avgRoll = totalRoll / iterations;
     const score = Math.round(successRate * 100);
 
     return {
       scenarioName: scenario.name,
       skill: scenario.skill,
       dc: scenario.dc,
-      iterationsRun: SIMULATION_ITERATIONS,
+      iterationsRun: iterations,
       successes,
       criticalSuccesses: critSuccesses,
       averageRoll: parseFloat(avgRoll.toFixed(1)),
@@ -955,16 +994,26 @@ function identifyStrengths(candidate: BardCandidate, combatResults: CombatScenar
   if (avgSocial > 80) strengths.push('Exceptional social aptitude');
   if (avgParty > 60) strengths.push('Strong party support capability');
   if (candidate.abilityScores.charisma >= 20) strengths.push('Maximum Charisma (+5 modifier)');
+  if (candidate.abilityScores.charisma >= 18 && candidate.abilityScores.charisma < 20) strengths.push('High Charisma (+4 modifier)');
   if (candidate.feats.some((f) => f.name === 'War Caster')) strengths.push('Concentration spell reliability (War Caster)');
   if (candidate.feats.some((f) => f.name === 'Alert')) strengths.push('Initiative dominance (Alert +5)');
   if (candidate.feats.some((f) => f.name === 'Actor')) strengths.push('Deception mastery (Actor feat)');
   if (candidate.feats.some((f) => f.name === 'Inspiring Leader')) strengths.push('Pre-combat HP buffer (Inspiring Leader)');
+  if (candidate.feats.some((f) => f.name === 'Lucky')) strengths.push('Lucky: 3 fate-rerolls per day');
+  if (candidate.feats.some((f) => f.name === 'Resilient (CON)')) strengths.push('CON save proficiency for concentration (Resilient)');
+  if (candidate.feats.some((f) => f.name === 'Fey Touched')) strengths.push('Fey Touched: Misty Step mobility + bonus spell');
+  if (candidate.feats.some((f) => f.name === 'Shadow Touched')) strengths.push('Shadow Touched: Invisibility + bonus spell');
+  if (candidate.feats.some((f) => f.name === 'Telekinetic')) strengths.push('Telekinetic: Mage Hand upgrade + bonus shove');
+  if (candidate.feats.some((f) => f.name === 'Tough')) strengths.push('Tough: +16 HP at level 8');
   if (candidate.subclass === 'College of Glamour') strengths.push('Mass social influence (Enthralling Performance)');
   if (candidate.subclass === 'College of Valor') strengths.push('Extra Attack for sustained melee pressure');
   if (candidate.subclass === 'College of Lore') strengths.push('Cutting Words + expanded spell selection (Magical Secrets)');
   if (candidate.skillExpertise.length >= 2) strengths.push(`Expertise in: ${candidate.skillExpertise.join(', ')}`);
   if (candidate.species === 'Half-Elf') strengths.push('Fey Ancestry: immune to charm/sleep effects');
   if (candidate.species === 'Tiefling') strengths.push('Hellish Resistance: fire damage resistance');
+  if (candidate.species === 'Halfling') strengths.push('Halfling Lucky: reroll natural 1s on d20 rolls');
+  if (candidate.species === 'Aasimar') strengths.push('Aasimar: Healing Hands + Radiant Soul flight (1 min/day)');
+  if (candidate.speed > 30) strengths.push(`Fleet of Foot: speed ${candidate.speed} ft`);
 
   return strengths;
 }
@@ -1080,4 +1129,701 @@ export function getBardCandidates(): BardCandidate[] {
 export function getTopBardRecommendation(): BenchmarkResult {
   const results = runBardBenchmarks();
   return results[0];
+}
+
+// ─── Lore Bard Exploration System ─────────────────────────────────────────────
+//
+// This section defines the combinatorial exploration engine for College of Lore
+// bards. It generates hundreds of builds by varying species, feats, and magic
+// items, then benchmarks them with a fast simulation pass to identify optimal
+// choices for Savras's champion.
+//
+// Base stats (27-point buy before species bonuses):
+//   STR 8 | DEX 14 | CON 14 | INT 10 | WIS 12 | CHA 15
+
+/**
+ * A species option available to a College of Lore bard.
+ */
+export interface SpeciesTemplate {
+  id: string;
+  species: string;
+  subspecies: string;
+  /** Racial ability score bonuses applied on top of the base point-buy array. */
+  abilityBonuses: Partial<BardAbilityScores>;
+  speed: number;
+  /** Variant Human and Custom Lineage receive an extra feat slot at level 1. */
+  extraFeatSlot: boolean;
+  /** Flavour traits listed in the result but not mechanically simulated. */
+  specialTraits: string[];
+}
+
+/**
+ * A feat option available during exploration.
+ * Some feats grant +1 to an ability score; these are applied during build generation.
+ */
+export interface FeatTemplate {
+  name: string;
+  description: string;
+  /** Optional ability score improvement granted by this feat (e.g. Actor → +1 CHA). */
+  abilityBonus?: Partial<BardAbilityScores>;
+}
+
+/**
+ * An uncommon magic item available to a College of Lore bard (no medium-armor
+ * requirement — the exploration uses light armor only).
+ */
+export interface MagicItemTemplate {
+  name: string;
+  type: string;
+  rarity: 'uncommon';
+  properties: string[];
+  armorClass?: number;
+  damage?: string;
+}
+
+/**
+ * The condensed benchmark result for a single generated build.
+ * Unlike BenchmarkResult (which carries full per-scenario details), this
+ * surface-level summary is designed for bulk ranked comparisons.
+ */
+export interface BardBuildResult {
+  rank: number;
+  buildId: string;
+  species: string;
+  subspecies: string;
+  feats: string[];
+  magicItems: string[];
+  abilityScores: BardAbilityScores;
+  armorClass: number;
+  maxHitPoints: number;
+  charismaModifier: number;
+  spellSaveDC: number;
+  compositeScore: number;
+  combatScore: number;
+  socialScore: number;
+  partySupportScore: number;
+  strengths: string[];
+  weaknesses: string[];
+  assessment: string;
+}
+
+/**
+ * The full output of a bard exploration run.
+ */
+export interface BardExplorationResult {
+  summary: {
+    totalBuildsEvaluated: number;
+    iterationsPerScenario: number;
+    subclassFixed: string;
+    level: number;
+  };
+  topBuilds: BardBuildResult[];
+  bySpecies: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
+  byFeatCombination: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
+  byMagicItems: Record<string, { topBuild: BardBuildResult; averageCompositeScore: number }>;
+}
+
+// ─── Species Pool ──────────────────────────────────────────────────────────────
+
+export const LORE_BARD_SPECIES_POOL: SpeciesTemplate[] = [
+  {
+    id: 'half-elf-standard',
+    species: 'Half-Elf',
+    subspecies: 'Standard Half-Elf',
+    abilityBonuses: { charisma: 2, dexterity: 1, constitution: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Fey Ancestry: advantage on saves vs. charm, immune to magical sleep',
+      'Darkvision 60 ft',
+      'Skill Versatility: two additional skill proficiencies',
+    ],
+  },
+  {
+    id: 'half-elf-drow',
+    species: 'Half-Elf',
+    subspecies: 'Drow-Descent Half-Elf',
+    abilityBonuses: { charisma: 2, dexterity: 1, wisdom: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Fey Ancestry: advantage on saves vs. charm, immune to magical sleep',
+      'Superior Darkvision 120 ft',
+      'Drow Magic: Dancing Lights, Faerie Fire (1/day), Darkness (1/day)',
+    ],
+  },
+  {
+    id: 'tiefling-standard',
+    species: 'Tiefling',
+    subspecies: 'Standard Tiefling',
+    abilityBonuses: { charisma: 2, intelligence: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Hellish Resistance: resistance to fire damage',
+      'Darkvision 60 ft',
+      'Infernal Legacy: Thaumaturgy, Hellish Rebuke (2/day), Darkness (1/day)',
+    ],
+  },
+  {
+    id: 'tiefling-glasya',
+    species: 'Tiefling',
+    subspecies: 'Glasya Tiefling',
+    abilityBonuses: { charisma: 2, dexterity: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Hellish Resistance: resistance to fire damage',
+      'Darkvision 60 ft',
+      'Legacy of Malbolge: Minor Illusion, Disguise Self (1/day), Invisibility (1/day)',
+    ],
+  },
+  {
+    id: 'variant-human',
+    species: 'Human',
+    subspecies: 'Variant Human',
+    abilityBonuses: { charisma: 1, dexterity: 1 },
+    speed: 30,
+    extraFeatSlot: true,  // gains a feat at level 1 = 3 total at level 8
+    specialTraits: [
+      'Extra feat at character creation (3 feats total at level 8)',
+      'One additional skill proficiency',
+      'Flexible +1 to any two ability scores',
+    ],
+  },
+  {
+    id: 'lightfoot-halfling',
+    species: 'Halfling',
+    subspecies: 'Lightfoot Halfling',
+    abilityBonuses: { dexterity: 2, charisma: 1 },
+    speed: 25,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Lucky: reroll natural 1s on attack rolls, ability checks, and saving throws',
+      'Brave: advantage on saves vs. frightened',
+      'Naturally Stealthy: can hide behind creatures one size larger',
+    ],
+  },
+  {
+    id: 'protector-aasimar',
+    species: 'Aasimar',
+    subspecies: 'Protector Aasimar',
+    abilityBonuses: { charisma: 2, wisdom: 1 },
+    speed: 30,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Healing Hands: heal HP equal to level (1/long rest)',
+      'Light Bearer: Light cantrip',
+      'Radiant Soul: sprout wings, fly 30 ft, +radiant damage 1×/turn (1 min/long rest)',
+      'Darkvision 60 ft, resistance to necrotic and radiant damage',
+    ],
+  },
+  {
+    id: 'wood-elf',
+    species: 'Elf',
+    subspecies: 'Wood Elf',
+    abilityBonuses: { dexterity: 2, wisdom: 1 },
+    speed: 35,
+    extraFeatSlot: false,
+    specialTraits: [
+      'Fleet of Foot: base speed 35 ft',
+      'Mask of the Wild: hide in lightly obscured natural terrain',
+      'Keen Senses: proficiency in Perception',
+      'Trance: 4-hour trance replaces 8-hour sleep',
+      'Fey Ancestry: advantage on saves vs. charm, immune to magical sleep',
+    ],
+  },
+];
+
+// ─── Feat Pool ─────────────────────────────────────────────────────────────────
+
+export const LORE_BARD_FEAT_POOL: FeatTemplate[] = [
+  {
+    name: 'War Caster',
+    description: 'Advantage on Constitution saving throws to maintain concentration. Can cast spells as opportunity attacks. Perform somatic components with weapons/shields in hand.',
+  },
+  {
+    name: 'Alert',
+    description: '+5 to initiative. Cannot be surprised while conscious. Other creatures gain no advantage from being hidden when they attack you.',
+  },
+  {
+    name: 'Inspiring Leader',
+    description: 'After a 10-minute speech, grant up to 6 creatures temporary HP equal to your level + Charisma modifier (13 temp HP at level 8 with CHA +5).',
+  },
+  {
+    name: 'Lucky',
+    description: 'Gain 3 luck points per long rest. Spend 1 to roll an extra d20 on an attack, check, or save — choose which result to use. Can also force a creature to reroll an attack against you.',
+  },
+  {
+    name: 'Resilient (CON)',
+    description: '+1 Constitution and proficiency in Constitution saving throws — adds proficiency bonus (+3) to concentration saves on top of the CON modifier.',
+    abilityBonus: { constitution: 1 },
+  },
+  {
+    name: 'Actor',
+    description: '+1 Charisma. Advantage on Deception and Performance checks. Can perfectly mimic voices and sounds you have heard.',
+    abilityBonus: { charisma: 1 },
+  },
+  {
+    name: 'Fey Touched',
+    description: '+1 Charisma. Learn Misty Step plus one 1st-level enchantment or divination spell (e.g. Silvery Barbs). Both spells can be cast once per long rest without a spell slot.',
+    abilityBonus: { charisma: 1 },
+  },
+  {
+    name: 'Shadow Touched',
+    description: '+1 Charisma. Learn Invisibility plus one 1st-level illusion or necromancy spell. Both spells can be cast once per long rest without a spell slot.',
+    abilityBonus: { charisma: 1 },
+  },
+  {
+    name: 'Telekinetic',
+    description: '+1 Charisma. Learn Mage Hand (upgraded: invisible, range 30 ft, bonus action). As a bonus action, shove a creature up to 5 ft closer or farther without a spell slot.',
+    abilityBonus: { charisma: 1 },
+  },
+  {
+    name: 'Skilled',
+    description: 'Gain proficiency in any combination of three skills or tools of your choice.',
+  },
+  {
+    name: 'Tough',
+    description: 'Maximum hit points increase by 2 for each level (+16 HP at level 8).',
+  },
+  {
+    name: 'Spell Sniper',
+    description: 'Double the range of spells that require an attack roll. Ignore half cover and three-quarters cover for spell attacks. Learn one attack-roll cantrip (e.g. Eldritch Blast).',
+  },
+];
+
+// ─── Magic Item Pool ───────────────────────────────────────────────────────────
+
+export const LORE_BARD_MAGIC_ITEM_POOL: MagicItemTemplate[] = [
+  {
+    name: 'Cloak of Protection',
+    type: 'wondrous item',
+    rarity: 'uncommon',
+    properties: ['+1 AC', '+1 to all saving throws (requires attunement)'],
+    armorClass: 1,
+  },
+  {
+    name: 'Hat of Disguise',
+    type: 'wondrous item',
+    rarity: 'uncommon',
+    properties: ['Cast Disguise Self at will (requires attunement)', 'Social infiltration', 'Advantage on Deception checks while in disguise'],
+  },
+  {
+    name: '+1 Rapier',
+    type: 'weapon',
+    rarity: 'uncommon',
+    properties: ['finesse', '+1 bonus to attack rolls and damage rolls'],
+    damage: '1d8+1',
+  },
+  {
+    name: 'Boots of Elvenkind',
+    type: 'wondrous item',
+    rarity: 'uncommon',
+    properties: ['Advantage on Dexterity (Stealth) checks relying on movement', 'Movement makes no sound'],
+  },
+  {
+    name: 'Periapt of Proof against Poison',
+    type: 'wondrous item',
+    rarity: 'uncommon',
+    properties: ['Immunity to poison damage', 'Immunity to the poisoned condition (requires attunement)'],
+  },
+  {
+    name: 'Instrument of the Bards — Canaith Mandolin',
+    type: 'instrument',
+    rarity: 'uncommon',
+    properties: [
+      '+1 to spell attack rolls and spell save DC while using as a focus',
+      'Advantage on saving throws against being charmed or frightened',
+      'Spells: Fly, Invisibility, Levitate, Protection from Evil and Good (1×/day each)',
+      'Requires attunement by a bard',
+    ],
+  },
+  {
+    name: 'Staff of Charming',
+    type: 'staff',
+    rarity: 'uncommon',
+    properties: [
+      '10 charges (regains 1d8+2 at dawn)',
+      'Expend charges to cast Charm Person (1), Command (1), or Comprehend Languages (1)',
+      'If targeted by an enchantment spell: save with advantage, reflect on a failed save, regain 1 charge on success',
+      'Requires attunement by a bard, cleric, druid, sorcerer, warlock, or wizard',
+    ],
+  },
+  {
+    name: 'Ring of Mind Shielding',
+    type: 'ring',
+    rarity: 'uncommon',
+    properties: [
+      'Immune to magic that reads thoughts or determines alignment',
+      'Telepathic communication can only occur if you choose to allow it',
+      'On death: soul can remain in ring indefinitely (requires attunement)',
+    ],
+  },
+];
+
+// ─── Feat Combinations Matrix ──────────────────────────────────────────────────
+
+/**
+ * Pre-selected 2-feat combinations for non-Variant-Human builds.
+ * Each tuple contains feat names from LORE_BARD_FEAT_POOL.
+ */
+const FEAT_PAIRS: [string, string][] = [
+  ['War Caster', 'Inspiring Leader'],
+  ['War Caster', 'Alert'],
+  ['War Caster', 'Lucky'],
+  ['War Caster', 'Resilient (CON)'],
+  ['War Caster', 'Fey Touched'],
+  ['War Caster', 'Actor'],
+  ['Alert', 'Inspiring Leader'],
+  ['Alert', 'Lucky'],
+  ['Alert', 'Fey Touched'],
+  ['Alert', 'Resilient (CON)'],
+  ['Inspiring Leader', 'Lucky'],
+  ['Inspiring Leader', 'Fey Touched'],
+  ['Inspiring Leader', 'Resilient (CON)'],
+  ['Tough', 'War Caster'],
+  ['Lucky', 'Resilient (CON)'],
+];
+
+/**
+ * Pre-selected 3-feat combinations for Variant Human builds.
+ * Each tuple contains feat names from LORE_BARD_FEAT_POOL.
+ */
+const FEAT_TRIPLES: [string, string, string][] = [
+  ['Alert', 'War Caster', 'Inspiring Leader'],
+  ['Alert', 'War Caster', 'Lucky'],
+  ['Alert', 'War Caster', 'Fey Touched'],
+  ['Alert', 'Inspiring Leader', 'Lucky'],
+  ['War Caster', 'Inspiring Leader', 'Lucky'],
+];
+
+/**
+ * Pre-selected magic item pair combinations from LORE_BARD_MAGIC_ITEM_POOL.
+ * Ordered from most synergistic to most niche.
+ */
+const ITEM_PAIRS: [string, string][] = [
+  ['Cloak of Protection', 'Hat of Disguise'],
+  ['Cloak of Protection', '+1 Rapier'],
+  ['Cloak of Protection', 'Instrument of the Bards — Canaith Mandolin'],
+  ['Hat of Disguise', '+1 Rapier'],
+  ['Hat of Disguise', 'Instrument of the Bards — Canaith Mandolin'],
+  ['Cloak of Protection', 'Periapt of Proof against Poison'],
+  ['+1 Rapier', 'Boots of Elvenkind'],
+  ['Hat of Disguise', 'Staff of Charming'],
+];
+
+// ─── Standard Lore Bard Spell List ────────────────────────────────────────────
+
+/**
+ * Canonical College of Lore spell list used for all exploration builds.
+ * Matches Lyra Silverstring's spell list — all core Lore Bard utility, control,
+ * and social spells are present.
+ */
+const LORE_BARD_SPELL_LIST: BardSpell[] = [
+  { name: 'Vicious Mockery', level: 0, school: 'Enchantment', type: 'damage' },
+  { name: 'Minor Illusion', level: 0, school: 'Illusion', type: 'utility' },
+  { name: 'Prestidigitation', level: 0, school: 'Transmutation', type: 'utility' },
+  { name: 'Healing Word', level: 1, school: 'Evocation', type: 'support' },
+  { name: 'Charm Person', level: 1, school: 'Enchantment', type: 'social' },
+  { name: 'Thunderwave', level: 1, school: 'Evocation', type: 'damage' },
+  { name: 'Suggestion', level: 2, school: 'Enchantment', type: 'social' },
+  { name: 'Mirror Image', level: 2, school: 'Illusion', type: 'defense' },
+  { name: 'Hold Person', level: 2, school: 'Enchantment', type: 'control' },
+  { name: 'Hypnotic Pattern', level: 3, school: 'Illusion', type: 'control' },
+  { name: 'Counterspell', level: 3, school: 'Abjuration', type: 'defense' },
+  { name: 'Dimension Door', level: 4, school: 'Conjuration', type: 'utility' },
+  { name: 'Hold Monster', level: 5, school: 'Enchantment', type: 'control' },
+];
+
+// ─── Build Generator ───────────────────────────────────────────────────────────
+
+/**
+ * Construct a full BardCandidate object from a species template + feat list + item list.
+ *
+ * Base point-buy stats (27 points): STR 8 | DEX 14 | CON 14 | INT 10 | WIS 12 | CHA 15.
+ * Racial bonuses are applied first, then feat ability bonuses (capped at 20).
+ */
+function buildLoreBardCandidate(
+  species: SpeciesTemplate,
+  feats: FeatTemplate[],
+  magicItems: MagicItemTemplate[],
+): BardCandidate {
+  // 1 — Apply base point-buy stats
+  const stats: BardAbilityScores = {
+    strength: 8,
+    dexterity: 14,
+    constitution: 14,
+    intelligence: 10,
+    wisdom: 12,
+    charisma: 15,
+  };
+
+  // 2 — Apply racial bonuses
+  for (const [stat, bonus] of Object.entries(species.abilityBonuses)) {
+    (stats as unknown as Record<string, number>)[stat] = Math.min(
+      (stats as unknown as Record<string, number>)[stat] + (bonus as number),
+      20,
+    );
+  }
+
+  // 3 — Apply feat ability bonuses
+  for (const feat of feats) {
+    if (feat.abilityBonus) {
+      for (const [stat, bonus] of Object.entries(feat.abilityBonus)) {
+        (stats as unknown as Record<string, number>)[stat] = Math.min(
+          (stats as unknown as Record<string, number>)[stat] + (bonus as number),
+          20,
+        );
+      }
+    }
+  }
+
+  // 4 — HP: 8d8 average (4.5 per die × 8) + CON mod × 8 + Tough feat bonus
+  const conMod = Math.floor((stats.constitution - 10) / 2);
+  const toughBonus = feats.some((f) => f.name === 'Tough') ? 16 : 0;
+  const maxHitPoints = Math.round(4.5 * 8) + conMod * 8 + toughBonus;
+
+  // 5 — AC: light armor (studded leather, no DEX cap) + optional Cloak (+1)
+  // Note: Cloak bonus is applied in the simulation; armorClass stores the base.
+  const dexMod = Math.floor((stats.dexterity - 10) / 2);
+  const armorClass = 12 + dexMod; // studded leather base 12
+
+  // 6 — Build identifier
+  const featKey = feats.map((f) => f.name.replace(/\s+/g, '-').toLowerCase()).sort().join('+');
+  const itemKey = magicItems.map((i) => i.name.replace(/\s+/g, '-').toLowerCase().slice(0, 12)).sort().join('+');
+  const buildId = `lore-${species.id}__${featKey}__${itemKey}`;
+
+  // 7 — Assemble equipment (mundane base gear + selected magic items)
+  const equipment: BardEquipment[] = [
+    { name: 'Rapier', type: 'weapon', rarity: 'common', properties: ['finesse'], damage: '1d8' },
+    { name: 'Studded Leather Armor', type: 'armor', rarity: 'common', properties: [], armorClass: 12 },
+    { name: 'Lute', type: 'instrument', rarity: 'common', properties: ['focus'] },
+    ...magicItems,
+  ];
+
+  return {
+    id: buildId,
+    name: `College of Lore Bard (${species.subspecies})`,
+    species: species.species,
+    subspecies: species.subspecies,
+    subclass: 'College of Lore',
+    background: 'Sage',
+    abilityScores: stats,
+    armorClass,
+    maxHitPoints,
+    speed: species.speed,
+    proficiencyBonus: 3,
+    savingThrows: ['Dexterity', 'Charisma'],
+    skillProficiencies: [
+      'Arcana', 'History', 'Insight', 'Perception',
+      'Persuasion', 'Deception', 'Performance',
+    ],
+    skillExpertise: ['Persuasion', 'Deception'],
+    feats: feats.map((f) => ({ name: f.name, description: f.description })),
+    spells: LORE_BARD_SPELL_LIST,
+    equipment,
+    specialTraits: [
+      ...species.specialTraits,
+      'Cutting Words: impose disadvantage on enemy attack rolls, ability checks, or damage',
+      'Jack of All Trades: add half proficiency to all non-proficient ability checks',
+      `Bardic Inspiration (d8): grant a d8 to an ally's roll (CHA mod uses per short rest)`,
+      'Magical Secrets (L6): Counterspell + Dimension Door from the Wizard list',
+    ],
+    lore: `A College of Lore bard of ${species.subspecies} heritage. Every choice in this ` +
+      `build was evaluated by Savras — The All-Seeing — across hundreds of simulated encounters.`,
+  };
+}
+
+// ─── Exploration Runner ────────────────────────────────────────────────────────
+
+/**
+ * Generate all builds in the exploration matrix.
+ *
+ * Returns one BardCandidate per (species, feat combination, item pair) triple.
+ * Non-Variant-Human species use 2-feat pairs; Variant Human uses 3-feat triples.
+ */
+export function generateLoreBardBuilds(): BardCandidate[] {
+  const builds: BardCandidate[] = [];
+  const featPool = new Map(LORE_BARD_FEAT_POOL.map((f) => [f.name, f]));
+  const itemPool = new Map(LORE_BARD_MAGIC_ITEM_POOL.map((i) => [i.name, i]));
+
+  for (const species of LORE_BARD_SPECIES_POOL) {
+    const featCombos = species.extraFeatSlot ? FEAT_TRIPLES : FEAT_PAIRS;
+    for (const featNames of featCombos) {
+      const feats = featNames
+        .map((n) => featPool.get(n))
+        .filter((f): f is FeatTemplate => f !== undefined);
+      for (const [item1Name, item2Name] of ITEM_PAIRS) {
+        const item1 = itemPool.get(item1Name);
+        const item2 = itemPool.get(item2Name);
+        if (!item1 || !item2) continue;
+        builds.push(buildLoreBardCandidate(species, feats, [item1, item2]));
+      }
+    }
+  }
+
+  return builds;
+}
+
+/**
+ * Run a full exploration benchmark over all generated builds.
+ *
+ * Uses a configurable number of iterations per scenario (default: 25) for speed.
+ * The standard benchmark (`runBardBenchmarks`) uses 200 for high accuracy;
+ * the exploration trades precision for breadth across hundreds of builds.
+ *
+ * @param iterationsPerScenario - Simulations per combat/social/party scenario (default 25).
+ * @param topN - Cap the returned ranked list to the N best builds (default 50, 0 = all).
+ */
+export function runLoreBardExploration(
+  iterationsPerScenario = 25,
+  topN = 50,
+): BardExplorationResult {
+  const builds = generateLoreBardBuilds();
+
+  // Run benchmarks for every build
+  const rawResults = builds.map((candidate) => {
+    const combatResults = runCombatBenchmark(candidate, iterationsPerScenario);
+    const socialResults = runSocialBenchmark(candidate, iterationsPerScenario);
+    const partyResults = runPartySupportBenchmark(candidate, iterationsPerScenario);
+
+    const combatScore = Math.round(
+      combatResults.reduce((s, r) => s + r.score, 0) / combatResults.length,
+    );
+    const socialScore = Math.round(
+      socialResults.reduce((s, r) => s + r.score, 0) / socialResults.length,
+    );
+    const partyScore = Math.round(
+      partyResults.reduce((s, r) => s + r.score, 0) / partyResults.length,
+    );
+    const compositeScore = Math.round(combatScore * 0.4 + socialScore * 0.4 + partyScore * 0.2);
+
+    const cha = Math.floor((candidate.abilityScores.charisma - 10) / 2);
+    const magicItems = candidate.equipment
+      .filter((e) => e.rarity === 'uncommon')
+      .map((e) => e.name);
+
+    const strengths = identifyStrengths(candidate, combatResults, socialResults, partyResults);
+    const weaknesses = identifyWeaknesses(candidate, combatResults);
+
+    // Brief Savras assessment for exploration builds
+    const assessment = compositeScore >= 70
+      ? `A strong candidate. Spell save DC ${8 + cha + 3} with ${candidate.feats.map((f) => f.name).join(' + ')} ` +
+        `on ${candidate.subspecies} chassis. The paths of fate converge favourably.`
+      : compositeScore >= 55
+        ? `A viable candidate. Some paths remain suboptimal — examine the breakdown to locate the weakness.`
+        : `Below-average performance. The combination of feats or magic items may not align with the ` +
+          `demands of College of Lore at this level.`;
+
+    return {
+      rank: 0,
+      buildId: candidate.id,
+      species: candidate.species,
+      subspecies: candidate.subspecies,
+      feats: candidate.feats.map((f) => f.name),
+      magicItems,
+      abilityScores: candidate.abilityScores,
+      armorClass: candidate.armorClass,
+      maxHitPoints: candidate.maxHitPoints,
+      charismaModifier: cha,
+      spellSaveDC: 8 + cha + candidate.proficiencyBonus,
+      compositeScore,
+      combatScore,
+      socialScore,
+      partySupportScore: partyScore,
+      strengths,
+      weaknesses,
+      assessment,
+    } as BardBuildResult;
+  });
+
+  // Sort and assign ranks
+  rawResults.sort((a, b) => b.compositeScore - a.compositeScore);
+  rawResults.forEach((r, i) => { r.rank = i + 1; });
+
+  const allBuilds = rawResults;
+  const topBuilds = topN > 0 ? allBuilds.slice(0, topN) : allBuilds;
+
+  // ── By-species breakdown ───────────────────────────────────────────────────
+  const bySpecies: BardExplorationResult['bySpecies'] = {};
+  for (const result of allBuilds) {
+    const key = `${result.species} (${result.subspecies})`;
+    if (!bySpecies[key]) {
+      bySpecies[key] = { topBuild: result, averageCompositeScore: 0 };
+    }
+  }
+  for (const key of Object.keys(bySpecies)) {
+    const group = allBuilds.filter(
+      (r) => `${r.species} (${r.subspecies})` === key,
+    );
+    const avg = group.reduce((s, r) => s + r.compositeScore, 0) / group.length;
+    bySpecies[key].averageCompositeScore = parseFloat(avg.toFixed(1));
+  }
+
+  // ── By-feat-combination breakdown ─────────────────────────────────────────
+  const byFeatCombination: BardExplorationResult['byFeatCombination'] = {};
+  for (const result of allBuilds) {
+    const key = result.feats.slice().sort().join(' + ');
+    if (!byFeatCombination[key]) {
+      byFeatCombination[key] = { topBuild: result, averageCompositeScore: 0 };
+    }
+  }
+  for (const key of Object.keys(byFeatCombination)) {
+    const group = allBuilds.filter(
+      (r) => r.feats.slice().sort().join(' + ') === key,
+    );
+    const avg = group.reduce((s, r) => s + r.compositeScore, 0) / group.length;
+    byFeatCombination[key].averageCompositeScore = parseFloat(avg.toFixed(1));
+  }
+
+  // ── By-magic-items breakdown ───────────────────────────────────────────────
+  const byMagicItems: BardExplorationResult['byMagicItems'] = {};
+  for (const result of allBuilds) {
+    const key = result.magicItems.slice().sort().join(' + ');
+    if (!byMagicItems[key]) {
+      byMagicItems[key] = { topBuild: result, averageCompositeScore: 0 };
+    }
+  }
+  for (const key of Object.keys(byMagicItems)) {
+    const group = allBuilds.filter(
+      (r) => r.magicItems.slice().sort().join(' + ') === key,
+    );
+    const avg = group.reduce((s, r) => s + r.compositeScore, 0) / group.length;
+    byMagicItems[key].averageCompositeScore = parseFloat(avg.toFixed(1));
+  }
+
+  return {
+    summary: {
+      totalBuildsEvaluated: allBuilds.length,
+      iterationsPerScenario,
+      subclassFixed: 'College of Lore',
+      level: 8,
+    },
+    topBuilds,
+    bySpecies,
+    byFeatCombination,
+    byMagicItems,
+  };
+}
+
+/**
+ * Return the species pool available for exploration.
+ */
+export function getLoreBardSpeciesPool(): SpeciesTemplate[] {
+  return LORE_BARD_SPECIES_POOL;
+}
+
+/**
+ * Return the feat pool available for exploration.
+ */
+export function getLoreBardFeatPool(): FeatTemplate[] {
+  return LORE_BARD_FEAT_POOL;
+}
+
+/**
+ * Return the magic item pool available for exploration.
+ */
+export function getLoreBardMagicItemPool(): MagicItemTemplate[] {
+  return LORE_BARD_MAGIC_ITEM_POOL;
 }

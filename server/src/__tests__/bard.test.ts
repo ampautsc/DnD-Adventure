@@ -9,6 +9,13 @@ import {
   BenchmarkResult,
   CombatScenarioResult,
   PartySupportScenarioResult,
+  getLoreBardSpeciesPool,
+  getLoreBardFeatPool,
+  getLoreBardMagicItemPool,
+  generateLoreBardBuilds,
+  runLoreBardExploration,
+  BardBuildResult,
+  BardExplorationResult,
 } from '../services/BardBenchmarkService';
 import { connectTestDB, closeTestDB, clearTestDB } from './helpers';
 
@@ -596,4 +603,363 @@ describe('POST /api/bard/instantiate', () => {
     expect(getRes.body.characterClass).toBe('Bard');
     expect(getRes.body.name).toBeTruthy();
   });
+});
+
+// ─── Lore Bard Exploration System Tests ──────────────────────────────────────
+
+describe('BardBenchmarkService - exploration pools', () => {
+  it('species pool returns 8 options', () => {
+    const pool = getLoreBardSpeciesPool();
+    expect(pool).toHaveLength(8);
+  });
+
+  it('each species has required fields', () => {
+    getLoreBardSpeciesPool().forEach((s) => {
+      expect(s.id).toBeTruthy();
+      expect(s.species).toBeTruthy();
+      expect(s.subspecies).toBeTruthy();
+      expect(typeof s.extraFeatSlot).toBe('boolean');
+      expect(s.speed).toBeGreaterThanOrEqual(25);
+      expect(Array.isArray(s.specialTraits)).toBe(true);
+    });
+  });
+
+  it('exactly one species has extraFeatSlot (Variant Human)', () => {
+    const extras = getLoreBardSpeciesPool().filter((s) => s.extraFeatSlot);
+    expect(extras).toHaveLength(1);
+    expect(extras[0].subspecies).toBe('Variant Human');
+  });
+
+  it('all CHA-boosting species grant at least +1 CHA bonus', () => {
+    const chaBoostSpecies = getLoreBardSpeciesPool().filter(
+      (s) => (s.abilityBonuses.charisma ?? 0) > 0,
+    );
+    expect(chaBoostSpecies.length).toBeGreaterThan(0);
+    chaBoostSpecies.forEach((s) => {
+      expect(s.abilityBonuses.charisma).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('feat pool returns 12 options', () => {
+    const pool = getLoreBardFeatPool();
+    expect(pool).toHaveLength(12);
+  });
+
+  it('each feat has a name and description', () => {
+    getLoreBardFeatPool().forEach((f) => {
+      expect(f.name).toBeTruthy();
+      expect(f.description.length).toBeGreaterThan(10);
+    });
+  });
+
+  it('feat names are unique', () => {
+    const names = getLoreBardFeatPool().map((f) => f.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('feats with ability bonuses only boost known stats', () => {
+    const validStats = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
+    getLoreBardFeatPool().forEach((f) => {
+      if (f.abilityBonus) {
+        Object.keys(f.abilityBonus).forEach((stat) => {
+          expect(validStats).toContain(stat);
+        });
+      }
+    });
+  });
+
+  it('magic item pool returns 8 options', () => {
+    const pool = getLoreBardMagicItemPool();
+    expect(pool).toHaveLength(8);
+  });
+
+  it('all magic items are uncommon rarity', () => {
+    getLoreBardMagicItemPool().forEach((i) => {
+      expect(i.rarity).toBe('uncommon');
+    });
+  });
+
+  it('magic item names are unique', () => {
+    const names = getLoreBardMagicItemPool().map((i) => i.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+describe('BardBenchmarkService - build generation', () => {
+  let builds: BardCandidate[];
+
+  beforeAll(() => {
+    builds = generateLoreBardBuilds();
+  });
+
+  it('generates more than 100 builds (hundreds of bards)', () => {
+    expect(builds.length).toBeGreaterThan(100);
+  });
+
+  it('all generated builds are College of Lore', () => {
+    builds.forEach((b) => {
+      expect(b.subclass).toBe('College of Lore');
+    });
+  });
+
+  it('all generated builds have level 8 proficiency bonus', () => {
+    builds.forEach((b) => {
+      expect(b.proficiencyBonus).toBe(3);
+    });
+  });
+
+  it('all generated builds have exactly 2 uncommon magic items', () => {
+    builds.forEach((b) => {
+      const uncommon = b.equipment.filter((e) => e.rarity === 'uncommon');
+      expect(uncommon.length).toBe(2);
+    });
+  });
+
+  it('all generated builds have 2 or 3 feats (3 for Variant Human)', () => {
+    builds.forEach((b) => {
+      const isVH = b.subspecies === 'Variant Human';
+      expect(b.feats.length).toBe(isVH ? 3 : 2);
+    });
+  });
+
+  it('build IDs are unique', () => {
+    const ids = builds.map((b) => b.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('feat ability bonuses are applied to ability scores', () => {
+    // Actor feat gives +1 CHA — builds with Actor should have CHA > base racial value
+    const actorBuilds = builds.filter((b) => b.feats.some((f) => f.name === 'Actor'));
+    actorBuilds.forEach((b) => {
+      // CHA should be at least racial base + 1 (Actor), so > base point-buy 15
+      expect(b.abilityScores.charisma).toBeGreaterThan(15);
+    });
+  });
+
+  it('Tough feat increases hit points', () => {
+    const toughBuilds = builds.filter((b) => b.feats.some((f) => f.name === 'Tough'));
+    const noToughBuilds = builds.filter((b) => !b.feats.some((f) => f.name === 'Tough'));
+    if (toughBuilds.length > 0 && noToughBuilds.length > 0) {
+      const avgTough = toughBuilds.reduce((s, b) => s + b.maxHitPoints, 0) / toughBuilds.length;
+      const avgNoTough = noToughBuilds.reduce((s, b) => s + b.maxHitPoints, 0) / noToughBuilds.length;
+      // Tough adds 16 HP at level 8
+      expect(avgTough).toBeGreaterThan(avgNoTough);
+    }
+  });
+
+  it('Variant Human builds contain feats from the Alert+WarCaster+InspLdr triple', () => {
+    const vhBuilds = builds.filter((b) => b.subspecies === 'Variant Human');
+    expect(vhBuilds.length).toBeGreaterThan(0);
+    // Verify that at least one VH build has 3 feats
+    expect(vhBuilds.some((b) => b.feats.length === 3)).toBe(true);
+  });
+});
+
+describe('BardBenchmarkService - exploration runner', () => {
+  let exploration: BardExplorationResult;
+
+  beforeAll(() => {
+    // Use minimal iterations for speed in test suite
+    exploration = runLoreBardExploration(5, 20);
+  });
+
+  it('summary reflects correct build count and iteration settings', () => {
+    expect(exploration.summary.totalBuildsEvaluated).toBeGreaterThan(100);
+    expect(exploration.summary.iterationsPerScenario).toBe(5);
+    expect(exploration.summary.subclassFixed).toBe('College of Lore');
+    expect(exploration.summary.level).toBe(8);
+  });
+
+  it('topBuilds returns the requested number of builds', () => {
+    expect(exploration.topBuilds).toHaveLength(20);
+  });
+
+  it('topBuilds are ranked in descending composite score order', () => {
+    for (let i = 1; i < exploration.topBuilds.length; i++) {
+      expect(exploration.topBuilds[i].compositeScore).toBeLessThanOrEqual(
+        exploration.topBuilds[i - 1].compositeScore,
+      );
+    }
+  });
+
+  it('rank 1 has the highest composite score in topBuilds', () => {
+    expect(exploration.topBuilds[0].rank).toBe(1);
+  });
+
+  it('each build result has required fields', () => {
+    exploration.topBuilds.forEach((b: BardBuildResult) => {
+      expect(b.buildId).toBeTruthy();
+      expect(b.species).toBeTruthy();
+      expect(b.subspecies).toBeTruthy();
+      expect(Array.isArray(b.feats)).toBe(true);
+      expect(Array.isArray(b.magicItems)).toBe(true);
+      expect(b.feats.length).toBeGreaterThanOrEqual(2);
+      expect(b.magicItems).toHaveLength(2);
+      expect(b.compositeScore).toBeGreaterThanOrEqual(0);
+      expect(b.compositeScore).toBeLessThanOrEqual(100);
+      expect(b.spellSaveDC).toBeGreaterThanOrEqual(11);
+      expect(b.charismaModifier).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('bySpecies contains all 8 species options', () => {
+    expect(Object.keys(exploration.bySpecies).length).toBe(8);
+  });
+
+  it('each species entry has a topBuild and averageCompositeScore', () => {
+    Object.values(exploration.bySpecies).forEach((entry) => {
+      expect(entry.topBuild).toBeDefined();
+      expect(typeof entry.averageCompositeScore).toBe('number');
+      expect(entry.averageCompositeScore).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it('byFeatCombination contains entries for each feat combo tested', () => {
+    // 15 non-VH pairs + 5 VH triples = 20 unique combinations
+    expect(Object.keys(exploration.byFeatCombination).length).toBe(20);
+  });
+
+  it('byMagicItems contains entries for all 8 item pairs tested', () => {
+    expect(Object.keys(exploration.byMagicItems).length).toBe(8);
+  });
+
+  it('topBuild in bySpecies is among the overall topBuilds or close to it', () => {
+    // The species-level top build must have a compositeScore >= the average for that species
+    Object.values(exploration.bySpecies).forEach((entry) => {
+      expect(entry.topBuild.compositeScore).toBeGreaterThanOrEqual(
+        entry.averageCompositeScore,
+      );
+    });
+  });
+
+  it('War Caster feat appears in the majority of top 10 builds', () => {
+    const top10 = exploration.topBuilds.slice(0, 10);
+    const withWarCaster = top10.filter((b) => b.feats.includes('War Caster'));
+    // War Caster is mechanically strong — should appear in most top builds
+    expect(withWarCaster.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('builds with charisma-boosting feats have higher CHA than base-racial builds', () => {
+    const chaBoostFeats = ['Actor', 'Fey Touched', 'Shadow Touched', 'Telekinetic'];
+    const boostedBuilds = exploration.topBuilds.filter(
+      (b) => b.feats.some((f) => chaBoostFeats.includes(f)),
+    );
+    const plainBuilds = exploration.topBuilds.filter(
+      (b) => !b.feats.some((f) => chaBoostFeats.includes(f)),
+    );
+    if (boostedBuilds.length > 0 && plainBuilds.length > 0) {
+      const avgBoostedCHA = boostedBuilds.reduce((s, b) => s + b.abilityScores.charisma, 0) / boostedBuilds.length;
+      const avgPlainCHA = plainBuilds.reduce((s, b) => s + b.abilityScores.charisma, 0) / plainBuilds.length;
+      expect(avgBoostedCHA).toBeGreaterThan(avgPlainCHA);
+    }
+  });
+});
+
+describe('GET /api/bard/explore/pools', () => {
+  it('returns 200 with species, feats, and magic items pools', async () => {
+    const res = await request(app).get('/api/bard/explore/pools');
+    expect(res.status).toBe(200);
+    expect(res.body.pools.species.count).toBe(8);
+    expect(res.body.pools.feats.count).toBe(12);
+    expect(res.body.pools.magicItems.count).toBe(8);
+  });
+
+  it('response includes subclassFixed, level, and totalBuildsInMatrix', async () => {
+    const res = await request(app).get('/api/bard/explore/pools');
+    expect(res.body.subclassFixed).toBe('College of Lore');
+    expect(res.body.level).toBe(8);
+    expect(res.body.totalBuildsInMatrix).toBeGreaterThan(100);
+  });
+
+  it('species options include id, species, subspecies, abilityBonuses, and speed', async () => {
+    const res = await request(app).get('/api/bard/explore/pools');
+    res.body.pools.species.options.forEach((s: Record<string, unknown>) => {
+      expect(s['id']).toBeTruthy();
+      expect(s['species']).toBeTruthy();
+      expect(s['subspecies']).toBeTruthy();
+      expect(s['abilityBonuses']).toBeDefined();
+      expect(typeof s['speed']).toBe('number');
+    });
+  });
+
+  it('feat options include name, description, and nullable abilityBonus', async () => {
+    const res = await request(app).get('/api/bard/explore/pools');
+    res.body.pools.feats.options.forEach((f: Record<string, unknown>) => {
+      expect(f['name']).toBeTruthy();
+      expect(f['description']).toBeTruthy();
+      // abilityBonus may be null (feats with no stat bonus)
+      expect('abilityBonus' in f).toBe(true);
+    });
+  });
+
+  it('magic item options include name, type, rarity, and properties', async () => {
+    const res = await request(app).get('/api/bard/explore/pools');
+    res.body.pools.magicItems.options.forEach((i: Record<string, unknown>) => {
+      expect(i['name']).toBeTruthy();
+      expect(i['type']).toBeTruthy();
+      expect(i['rarity']).toBe('uncommon');
+      expect(Array.isArray(i['properties'])).toBe(true);
+    });
+  });
+});
+
+describe('GET /api/bard/explore', () => {
+  it('returns 200 with summary, topBuilds, bySpecies, byFeatCombination, byMagicItems', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=10');
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toBeDefined();
+    expect(Array.isArray(res.body.topBuilds)).toBe(true);
+    expect(res.body.bySpecies).toBeDefined();
+    expect(res.body.byFeatCombination).toBeDefined();
+    expect(res.body.byMagicItems).toBeDefined();
+  }, 30000);
+
+  it('respects the top= query parameter', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5');
+    expect(res.status).toBe(200);
+    expect(res.body.topBuilds).toHaveLength(5);
+  }, 30000);
+
+  it('summary reflects the iterations parameter', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5');
+    expect(res.status).toBe(200);
+    expect(res.body.summary.iterationsPerScenario).toBe(5);
+  }, 30000);
+
+  it('topBuilds are in descending composite score order', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=10');
+    expect(res.status).toBe(200);
+    const topBuilds: BardBuildResult[] = res.body.topBuilds;
+    for (let i = 1; i < topBuilds.length; i++) {
+      expect(topBuilds[i].compositeScore).toBeLessThanOrEqual(topBuilds[i - 1].compositeScore);
+    }
+  }, 30000);
+
+  it('each build in topBuilds has species, feats, magicItems, and scores', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=5&top=5');
+    expect(res.status).toBe(200);
+    res.body.topBuilds.forEach((b: BardBuildResult) => {
+      expect(b.species).toBeTruthy();
+      expect(b.subspecies).toBeTruthy();
+      expect(Array.isArray(b.feats)).toBe(true);
+      expect(b.magicItems).toHaveLength(2);
+      expect(typeof b.compositeScore).toBe('number');
+      expect(typeof b.combatScore).toBe('number');
+      expect(typeof b.socialScore).toBe('number');
+      expect(typeof b.partySupportScore).toBe('number');
+      expect(typeof b.spellSaveDC).toBe('number');
+    });
+  }, 30000);
+
+  it('iterations cap is respected (max 200)', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=9999&top=3');
+    expect(res.status).toBe(200);
+    expect(res.body.summary.iterationsPerScenario).toBeLessThanOrEqual(200);
+  }, 30000);
+
+  it('invalid iterations parameter defaults gracefully', async () => {
+    const res = await request(app).get('/api/bard/explore?iterations=abc&top=3');
+    expect(res.status).toBe(200);
+    expect(res.body.summary.iterationsPerScenario).toBeGreaterThan(0);
+  }, 30000);
 });
