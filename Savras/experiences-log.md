@@ -398,3 +398,45 @@ The range from best species (Halfling avg 54.1) to worst (Wood Elf avg 51.4) is 
 - Should Firbolg Hidden Step also grant advantage on the bard's own attack roll on the turn it's activated? (In RAW, attacking while invisible = advantage, but the bard then loses invisibility after the hit.) Currently modeled as purely defensive (skip attack, maintain stealth).
 - Should an "Autumn Eladrin" variant be added with seasonal CHA-based spells (Calm Emotions, etc.) and a slight CHA affinity, distinguishing it from the DEX-focused generic Eladrin?
 - With 4 combat scenarios and Magic Resistance now mechanically modeled, is the Satyr data sufficient to recommend as a candidate for Savras's champion, or should the social simulation also model charm-resistance advantages?
+
+---
+
+### Session 010: The Scales — A Weighted Scoring System
+**Date:** 2026-03-09
+**Context:** The keeper observed that a single fixed composite score cannot fairly evaluate a bard across different campaign contexts. A dungeon-crawl demands survival above all; a court intrigue rewards silver tongues. The scoring system required weights that could be tuned to campaign specifics.
+
+**What I Observed:**
+- The existing composite was hardcoded: `combatScore * 0.4 + socialScore * 0.4 + partyScore * 0.2`. No mechanism existed to shift this formula.
+- Within each category, all scenarios were equally weighted — a simple average. The "Warlock's Hold" (hard combat) and "Bandit Ambush" (easy combat) counted identically.
+- A campaign where the party spends most time in dungeons should weight hard combat scenarios more heavily. A political intrigue campaign should weight "Infiltrate the Noble Gala" more heavily than "Inspire the Downtrodden."
+- The system had the data to support this: 4 combat scenarios, 3 social scenarios, 3 party support scenarios — each with distinct names and difficulty profiles. The infrastructure only needed a weight mapping.
+
+**What Was Decided:**
+- To add `ScoringWeights` and `CampaignProfile` interfaces to `BardBenchmarkService.ts`, enabling per-scenario and per-category weight control.
+- To create `DEFAULT_SCORING_WEIGHTS` matching the existing 40%/40%/20% formula with equal scenario weights — backward-compatible by design.
+- To create 5 named `CAMPAIGN_PROFILES`: all-purpose (default), dungeon-crawl (60% combat, hard scenarios weighted 2x), social-intrigue (60% social, Infiltrate Noble Gala weighted 2x), war-campaign (50% combat, 35% party, Inspire Downtrodden weighted 2x), exploration (40% combat, 35% party, Road to Baldur's Gate weighted 2x).
+- To add `computeWeightedCategoryScore()`, `computeCompositeScore()`, and `resolveWeights()` helpers — the last exported for testing and external use.
+- To update `runBardBenchmarks(weights?)`, `getTopBardRecommendation(weights?)`, and `runLoreBardExploration(iterations, topN, weights?)` to accept optional weights.
+- To add `scoringWeightsUsed` to `BardExplorationResult.summary` so responses are self-documenting.
+- To add `GET /api/bard/scoring-profiles` endpoint listing all profiles with full weight configurations.
+- To accept `{ profile?, weights? }` in `POST /api/bard/benchmark` body; `?profile=...` in GET routes.
+- Profile takes precedence over custom weights when both are supplied (documented in JSDoc).
+- To add 47 new tests: profile structure, resolveWeights behavior, benchmark with default/custom/profile weights, exploration summary fields, all API endpoints.
+- To update `generateSavrasAssessment()` to accept `compositeScore` directly instead of recalculating with hardcoded weights — the assessment now correctly reflects whatever weights were applied.
+
+**What Was Learned:**
+- Backward compatibility with equal-weight defaults is achieved by mathematical identity: when all scenario weights are 1.0 and category weights sum to 1.0, `computeWeightedCategoryScore` is identical to a simple average, and `computeCompositeScore` is identical to the legacy formula.
+- The two independent simulation runs producing different stochastic scores is expected — the test for "same weights = same structure" must verify the *weights object*, not the simulation *results*. Comparing exact scores between two separate simulation runs would be a flawed test.
+- Normalising category weights (dividing by total) means users can pass `{combat: 3, social: 1, partySupport: 1}` as easily as `{combat: 0.6, social: 0.2, partySupport: 0.2}` — only ratios matter.
+- A weight of 0.0 for a scenario effectively excludes it from the category score calculation (totalWeight excludes it via `Math.max(0, weight)`). This gracefully handles the "scenario not applicable to this campaign" case.
+- 240 tests across 6 suites — all passing.
+
+**Probability Assessment:**
+- The scoring system now enables objective, fact-based bard selection for any campaign archetype without requiring a new simulation run for each one.
+- The dungeon-crawl profile will likely elevate Cadwyn Ironbeat (College of Valor) as top recommendation — he has the highest combat survival rate. The social-intrigue profile will likely elevate Vael Duskwhisper (College of Glamour).
+- The keeper now has a system where "different campaigns prefer different bards" is expressed in numbers, not gut feelings. This is exactly the truth Savras exists to provide.
+
+**Unresolved Questions:**
+- Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)?
+- Should the exploration system expose a `byScenario` breakdown in addition to `bySpecies`, `byFeatCombination`, and `byMagicItems` — showing which scenarios each build excels or struggles in?
+- With campaign-weighted scoring now available, what does the optimal build look like under the dungeon-crawl profile specifically? The keeper has not yet run this query.

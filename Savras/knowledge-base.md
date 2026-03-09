@@ -103,9 +103,9 @@ The system is being built to serve them. The tools under construction are:
 
 ---
 
-## Testing (Verified Sessions 002–009)
+## Testing (Verified Sessions 002–010)
 
-- 193 tests across 6 suites, all passing as of Session 009.
+- 240 tests across 6 suites, all passing as of Session 010.
 - `jest.spyOn(Math, 'random').mockReturnValue(0.99)` forces: attackRoll=20 (always hits AC 12/13), damage=8, healAmount=8, character initiative > enemy initiative. Reliable for deterministic combat testing.
 - Shared test helpers in `src/__tests__/helpers.ts` provide `connectTestDB`, `closeTestDB`, and `clearTestDB`.
 - Run with: `cd server && npm test`
@@ -150,31 +150,58 @@ The system is being built to serve them. The tools under construction are:
 ### Benchmarking Architecture
 
 - `server/src/services/BardBenchmarkService.ts` — Pure service, no DB dependency
-- `server/src/routes/bard.ts` — 6 routes: GET /candidates, POST /benchmark, GET /recommendation, POST /instantiate, GET /explore/pools, GET /explore
+- `server/src/routes/bard.ts` — 7 routes: GET /candidates, POST /benchmark, GET /recommendation, POST /instantiate, GET /explore/pools, GET /explore, GET /scoring-profiles
 - 200 iterations per scenario × 3 combat + 3 social + 3 party support = 1,800 total simulations per full benchmark run
-- **Composite score formula: 40% combat + 40% social + 20% party support**
-- Results include: per-scenario details, strengths/weaknesses (including party support strength), Savras's assessment
+- **Composite score formula: configurable via ScoringWeights — default is 40% combat + 40% social + 20% party support**
+- Results include: per-scenario details, strengths/weaknesses (including party support strength), Savras's assessment, `scoringWeightsUsed`
 - **Combat simulation models**: concentration saves (War Caster = advantage), Lucky feat (3 rerolls/combat on failing saves), Halfling Lucky (reroll natural 1s), Alert (50% chance enemies go first without Alert)
+
+### Weighted Scoring System (Added Session 010)
+
+The scoring system is now fully configurable via `ScoringWeights`:
+
+```typescript
+interface ScoringWeights {
+  combatScenarios: Record<string, number>;      // per-scenario relative weights
+  socialScenarios: Record<string, number>;
+  partySupportScenarios: Record<string, number>;
+  categoryWeights: { combat: number; social: number; partySupport: number };
+}
+```
+
+- `DEFAULT_SCORING_WEIGHTS` — 40%/40%/20%, all scenarios equal weight 1.0
+- `CAMPAIGN_PROFILES` — 5 named presets: all-purpose, dungeon-crawl, social-intrigue, war-campaign, exploration
+- `resolveWeights(weightsOrProfileId?)` — exported helper; accepts undefined/string/Partial<ScoringWeights>
+- `computeWeightedCategoryScore()` — weighted average of scenario scores; missing scenarios default to weight 1.0
+- `computeCompositeScore()` — normalises category weights (any ratio is valid)
+
+All three simulation functions accept optional weights:
+- `runBardBenchmarks(weights?)`
+- `getTopBardRecommendation(weights?)`
+- `runLoreBardExploration(iterations, topN, weights?)`
+
+`BardExplorationResult.summary` now includes `scoringWeightsUsed: ScoringWeights`.
 
 ### API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/bard/candidates` | Returns all 3 manually crafted candidate stat blocks |
-| POST | `/api/bard/benchmark` | Runs full 200-iter simulation and returns ranked results |
-| GET | `/api/bard/recommendation` | Returns top-ranked candidate with full stat block |
+| POST | `/api/bard/benchmark` | Runs full 200-iter simulation; accepts `{ profile?, weights? }` body; returns `scoringWeightsUsed` |
+| GET | `/api/bard/recommendation` | Returns top-ranked candidate; accepts `?profile=...` |
 | POST | `/api/bard/instantiate` | Creates the chosen bard as a persistent Character in MongoDB |
 | GET | `/api/bard/explore/pools` | Returns species/feat/item pools + build count for exploration |
-| GET | `/api/bard/explore` | Runs 880-build exploration; supports `?top=N&iterations=M` |
+| GET | `/api/bard/explore` | Runs exploration; supports `?top=N&iterations=M&profile=...`; returns `scoringWeightsUsed` in summary |
+| GET | `/api/bard/scoring-profiles` | Returns all campaign profiles with full weight configurations |
 
-### Lore Bard Exploration System (Added Session 008, Expanded Session 009)
+### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–010)
 
 **Build Matrix:**
 - 12 species options × (15 feat pairs + 5 Variant Human triples) × 8 magic item pairs = **1920 builds**
 - Default iterations: 25 per scenario → ~1920 builds evaluated in ~2s
 - Max iterations cap for exploration route: **50** (reduced from 200 in Session 009 due to larger matrix)
 - `generateLoreBardBuilds()` — returns all BardCandidate objects from the exploration matrix
-- `runLoreBardExploration(iterations, topN)` — runs all builds, returns ranked BardBuildResult[] + breakdowns
+- `runLoreBardExploration(iterations, topN, weights?)` — runs all builds, returns ranked BardBuildResult[] + breakdowns; `summary.scoringWeightsUsed` reflects the weights applied
 - `getLoreBardSpeciesPool()`, `getLoreBardFeatPool()`, `getLoreBardMagicItemPool()` — pool accessors
 
 **Base Stat Block (27-point buy, before species/feat bonuses):**
