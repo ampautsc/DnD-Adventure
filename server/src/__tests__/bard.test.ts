@@ -3132,3 +3132,129 @@ describe('GET /api/bard/encounter-logs/:buildId', () => {
     }
   }, 30000);
 });
+
+// ─── GET /api/bard/ranking Tests ──────────────────────────────────────────────
+
+describe('GET /api/bard/ranking', () => {
+  it('returns 200 with the expected response shape', async () => {
+    const res = await request(app).get('/api/bard/ranking?iterations=3');
+    expect(res.status).toBe(200);
+    expect(res.body.filters).toBeDefined();
+    expect(res.body.sorting).toBeDefined();
+    expect(res.body.pagination).toBeDefined();
+    expect(Array.isArray(res.body.builds)).toBe(true);
+    expect(res.body.scoringWeightsUsed).toBeDefined();
+  }, 60000);
+
+  it('default sort is compositeScore descending', async () => {
+    const res = await request(app).get('/api/bard/ranking?iterations=3');
+    expect(res.status).toBe(200);
+    expect(res.body.sorting.sortBy).toBe('compositeScore');
+    expect(res.body.sorting.sortOrder).toBe('desc');
+    const builds: BardBuildResult[] = res.body.builds;
+    for (let i = 1; i < builds.length; i++) {
+      expect(builds[i - 1].compositeScore).toBeGreaterThanOrEqual(builds[i].compositeScore);
+    }
+  }, 60000);
+
+  it('sortBy=combatScore&sortOrder=asc sorts ascending by combatScore', async () => {
+    const res = await request(app).get('/api/bard/ranking?iterations=3&sortBy=combatScore&sortOrder=asc');
+    expect(res.status).toBe(200);
+    expect(res.body.sorting.sortBy).toBe('combatScore');
+    expect(res.body.sorting.sortOrder).toBe('asc');
+    const builds: BardBuildResult[] = res.body.builds;
+    for (let i = 1; i < builds.length; i++) {
+      expect(builds[i - 1].combatScore).toBeLessThanOrEqual(builds[i].combatScore);
+    }
+  }, 60000);
+
+  it('invalid sortBy falls back to compositeScore', async () => {
+    const res = await request(app).get('/api/bard/ranking?iterations=3&sortBy=invalidField');
+    expect(res.status).toBe(200);
+    expect(res.body.sorting.sortBy).toBe('compositeScore');
+  }, 60000);
+
+  it('speciesFilter restricts builds to the given species', async () => {
+    const speciesPool = getLoreBardSpeciesPool();
+    const targetSpecies = speciesPool[0].id;
+    const res = await request(app).get(`/api/bard/ranking?iterations=3&speciesFilter=${encodeURIComponent(targetSpecies)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.filters.speciesFilter).toBe(targetSpecies);
+    const builds: BardBuildResult[] = res.body.builds;
+    builds.forEach((b) => {
+      expect(b.subspecies.toLowerCase()).toContain(
+        speciesPool[0].subspecies.toLowerCase().split(' ')[0],
+      );
+    });
+  }, 60000);
+
+  it('featsFilter restricts builds to those containing the specified feat', async () => {
+    const featPool = getLoreBardFeatPool();
+    const targetFeat = featPool[0].name;
+    const res = await request(app).get(`/api/bard/ranking?iterations=3&featsFilter=${encodeURIComponent(targetFeat)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.filters.featsFilter).toContain(targetFeat);
+    const builds: BardBuildResult[] = res.body.builds;
+    expect(builds.length).toBeGreaterThan(0);
+    builds.forEach((b) => {
+      expect(b.feats.map((f) => f.toLowerCase())).toContain(targetFeat.toLowerCase());
+    });
+  }, 60000);
+
+  it('magicItemsFilter restricts builds to those containing the specified item', async () => {
+    const itemPool = getLoreBardMagicItemPool();
+    const targetItem = itemPool[0].name;
+    const res = await request(app).get(`/api/bard/ranking?iterations=3&magicItemsFilter=${encodeURIComponent(targetItem)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.filters.magicItemsFilter).toContain(targetItem);
+    const builds: BardBuildResult[] = res.body.builds;
+    expect(builds.length).toBeGreaterThan(0);
+    builds.forEach((b) => {
+      expect(b.magicItems.map((m) => m.toLowerCase())).toContain(targetItem.toLowerCase());
+    });
+  }, 60000);
+
+  it('minScore filter excludes builds below the threshold', async () => {
+    const res = await request(app).get('/api/bard/ranking?iterations=3&minScore=50');
+    expect(res.status).toBe(200);
+    expect(res.body.filters.minScore).toBe(50);
+    const builds: BardBuildResult[] = res.body.builds;
+    builds.forEach((b) => {
+      expect(b.compositeScore).toBeGreaterThanOrEqual(50);
+    });
+  }, 60000);
+
+  it('limit and offset paginate results correctly', async () => {
+    const firstPage = await request(app).get('/api/bard/ranking?iterations=3&limit=5&offset=0');
+    expect(firstPage.status).toBe(200);
+    expect(firstPage.body.builds).toHaveLength(5);
+    expect(firstPage.body.pagination.returned).toBe(5);
+    expect(firstPage.body.pagination.offset).toBe(0);
+
+    const secondPage = await request(app).get('/api/bard/ranking?iterations=3&limit=5&offset=5');
+    expect(secondPage.status).toBe(200);
+    expect(secondPage.body.builds).toHaveLength(5);
+    expect(secondPage.body.pagination.offset).toBe(5);
+
+    // The two pages should not overlap
+    const firstIds = firstPage.body.builds.map((b: BardBuildResult) => b.buildId);
+    const secondIds = secondPage.body.builds.map((b: BardBuildResult) => b.buildId);
+    firstIds.forEach((id: string) => expect(secondIds).not.toContain(id));
+  }, 60000);
+
+  it('limit=0 returns all matching builds', async () => {
+    const res = await request(app).get('/api/bard/ranking?iterations=3&limit=0');
+    expect(res.status).toBe(200);
+    expect(res.body.pagination.limit).toBeNull();
+    expect(res.body.pagination.returned).toBe(res.body.pagination.total);
+  }, 60000);
+
+  it('ranks are 1-indexed and consecutive within the filtered result', async () => {
+    const res = await request(app).get('/api/bard/ranking?iterations=3&limit=0');
+    expect(res.status).toBe(200);
+    const builds: BardBuildResult[] = res.body.builds;
+    builds.forEach((b, i) => {
+      expect(b.rank).toBe(i + 1);
+    });
+  }, 60000);
+});
