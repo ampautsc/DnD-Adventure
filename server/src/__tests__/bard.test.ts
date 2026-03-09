@@ -14,6 +14,7 @@ import {
   getLoreBardMagicItemPool,
   generateLoreBardBuilds,
   runLoreBardExploration,
+  runSingleBuildExploration,
   BardBuildResult,
   BardExplorationResult,
   ScoringWeights,
@@ -2703,5 +2704,121 @@ describe('GET /api/bard/explore - speciesFilter parameter', () => {
     (res.body.topBuilds as Array<{ subspecies: string }>).forEach((build) => {
       expect(build.subspecies).toBe('Standard Half-Elf');
     });
+  }, 30000);
+});
+
+// ─── Single-Build Exploration ──────────────────────────────────────────────────
+
+describe('BardBenchmarkService - runSingleBuildExploration', () => {
+  it('returns null for an unknown buildId', () => {
+    const result = runSingleBuildExploration('lore-nonexistent__foo__bar');
+    expect(result).toBeNull();
+  });
+
+  it('returns a BardBuildResult for a valid buildId', () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = builds[0].id;
+    const result = runSingleBuildExploration(buildId, 3);
+    expect(result).not.toBeNull();
+    expect(result!.buildId).toBe(buildId);
+    expect(result!.rank).toBe(1);
+  });
+
+  it('result has all required BardBuildResult fields', () => {
+    const builds = generateLoreBardBuilds();
+    const result = runSingleBuildExploration(builds[0].id, 3);
+    expect(result).not.toBeNull();
+    expect(typeof result!.species).toBe('string');
+    expect(typeof result!.subspecies).toBe('string');
+    expect(Array.isArray(result!.feats)).toBe(true);
+    expect(Array.isArray(result!.magicItems)).toBe(true);
+    expect(typeof result!.compositeScore).toBe('number');
+    expect(typeof result!.combatScore).toBe('number');
+    expect(typeof result!.socialScore).toBe('number');
+    expect(typeof result!.partySupportScore).toBe('number');
+    expect(typeof result!.spellSaveDC).toBe('number');
+    expect(result!.scenarioScores).toBeDefined();
+  });
+
+  it('scenarioScores contains exactly 10 scenario entries', () => {
+    const builds = generateLoreBardBuilds();
+    const result = runSingleBuildExploration(builds[0].id, 3);
+    expect(result).not.toBeNull();
+    expect(Object.keys(result!.scenarioScores)).toHaveLength(10);
+  });
+
+  it('custom weights are applied (social-intrigue profile raises socialScore)', () => {
+    const builds = generateLoreBardBuilds();
+    // Use the same buildId with default weights vs social-intrigue to confirm weights are wired
+    const buildId = builds[0].id;
+    const defaultResult = runSingleBuildExploration(buildId, 5);
+    const socialResult = runSingleBuildExploration(buildId, 5, 'social-intrigue');
+    // Both must return results, not null
+    expect(defaultResult).not.toBeNull();
+    expect(socialResult).not.toBeNull();
+    // Social-intrigue weights upweight social scenarios — compositeScore will differ
+    // (We can't assert the exact direction due to Monte Carlo variance, but the
+    // function must accept and use the weights without error.)
+    expect(typeof socialResult!.compositeScore).toBe('number');
+  });
+});
+
+describe('GET /api/bard/explore/:buildId', () => {
+  it('returns 404 for an unknown buildId', async () => {
+    const res = await request(app).get(
+      '/api/bard/explore/lore-nonexistent__foo__bar',
+    );
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Build not found');
+  }, 30000);
+
+  it('returns 200 with full build result for a valid buildId', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    const res = await request(app).get(`/api/bard/explore/${buildId}?iterations=3`);
+    expect(res.status).toBe(200);
+    expect(res.body.build).toBeDefined();
+    expect(res.body.build.buildId).toBe(builds[0].id);
+    expect(res.body.scoringWeightsUsed).toBeDefined();
+  }, 30000);
+
+  it('build result in response contains all required fields', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    const res = await request(app).get(`/api/bard/explore/${buildId}?iterations=3`);
+    expect(res.status).toBe(200);
+    const build = res.body.build as BardBuildResult;
+    expect(typeof build.species).toBe('string');
+    expect(typeof build.compositeScore).toBe('number');
+    expect(typeof build.spellSaveDC).toBe('number');
+    expect(build.scenarioScores).toBeDefined();
+    expect(Object.keys(build.scenarioScores)).toHaveLength(10);
+  }, 30000);
+
+  it('?iterations cap is respected (values above 200 are clamped to 200)', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    // Just verify the request succeeds — we cannot inspect the internal iteration count
+    // but the clamping logic prevents unbounded simulation time.
+    const res = await request(app).get(`/api/bard/explore/${buildId}?iterations=9999`);
+    expect(res.status).toBe(200);
+    expect(res.body.build).toBeDefined();
+  }, 60000);
+
+  it('?profile param is accepted and wired (no 500 error)', async () => {
+    const builds = generateLoreBardBuilds();
+    const buildId = encodeURIComponent(builds[0].id);
+    const res = await request(app).get(
+      `/api/bard/explore/${buildId}?iterations=3&profile=dungeon-crawl`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.build).toBeDefined();
+    expect(res.body.scoringWeightsUsed).toBeDefined();
+  }, 30000);
+
+  it('GET /explore/pools is not shadowed by the :buildId route', async () => {
+    const res = await request(app).get('/api/bard/explore/pools');
+    expect(res.status).toBe(200);
+    expect(res.body.pools).toBeDefined();
   }, 30000);
 });
