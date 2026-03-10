@@ -1011,4 +1011,187 @@ router.get('/encounter-logs/:buildId', (req: Request, res: Response) => {
   }
 });
 
+// ─── Valid sort fields for the ranking viewer ─────────────────────────────────
+const VALID_SORT_FIELDS = [
+  'compositeScore', 'combatScore', 'socialScore', 'partySupportScore',
+  'armorClass', 'maxHitPoints', 'spellSaveDC', 'charismaModifier',
+] as const;
+type RankingSortField = typeof VALID_SORT_FIELDS[number];
+
+/**
+ * GET /api/bard/ranking
+ *
+ * Returns a filterable, sortable ranked list of College of Lore bard builds
+ * from the exploration matrix.  Purpose-built for the ranking viewer — it
+ * exposes fine-grained filtering and sorting over the full build pool.
+ *
+ * Query parameters:
+ *   - sortBy      (string, default "compositeScore"): Field to sort by.
+ *                 Valid values: compositeScore, combatScore, socialScore,
+ *                 partySupportScore, armorClass, maxHitPoints, spellSaveDC,
+ *                 charismaModifier.
+ *   - sortOrder   (string, default "desc"): Sort direction. Valid: asc, desc.
+ *   - speciesFilter (string, optional): Restrict results to builds whose
+ *                 species ID matches the given value.
+ *                 Use GET /explore/pools to see valid species IDs.
+ *   - featsFilter (string, optional): Comma-separated feat name(s).
+ *                 Only builds containing ALL specified feats are returned.
+ *   - magicItemsFilter (string, optional): Comma-separated magic item name(s).
+ *                 Only builds containing ALL specified items are returned.
+ *   - minScore    (number, optional): Minimum composite score (inclusive).
+ *   - maxScore    (number, optional): Maximum composite score (inclusive).
+ *   - limit       (number, default 50, max 500): Max results to return.
+ *                 Set to 0 to return all matching builds.
+ *   - offset      (number, default 0): Results to skip for pagination.
+ *   - iterations  (number, default 10, max 50): Simulation iterations per
+ *                 scenario. Lower values are faster; 10 is sufficient for
+ *                 directional ranking.
+ *   - profile     (string, optional): Campaign profile ID.
+ *   - profileId   (string, optional): MongoDB ObjectId of a saved custom
+ *                 profile.  Takes precedence over `profile`.
+ *
+ * Response:
+ *   - filters: The applied filter values (echoed back).
+ *   - sorting: { sortBy, sortOrder } that was applied.
+ *   - pagination: { total, limit, offset, returned }.
+ *   - builds: Filtered, sorted, paginated BardBuildResult array.
+ *   - scoringWeightsUsed: The weights applied during simulation.
+ */
+router.get('/ranking', async (req: Request, res: Response) => {
+  try {
+    // ── Sort params ──────────────────────────────────────────────────────────
+    const rawSortBy = req.query['sortBy'] ? String(req.query['sortBy']) : 'compositeScore';
+    const sortBy: RankingSortField = (VALID_SORT_FIELDS as readonly string[]).includes(rawSortBy)
+      ? (rawSortBy as RankingSortField)
+      : 'compositeScore';
+    const rawSortOrder = req.query['sortOrder'] ? String(req.query['sortOrder']) : 'desc';
+    const sortOrder: 'asc' | 'desc' = rawSortOrder === 'asc' ? 'asc' : 'desc';
+
+    // ── Filter params ────────────────────────────────────────────────────────
+    const rawSpeciesFilter = req.query['speciesFilter']
+      ? String(req.query['speciesFilter'])
+      : undefined;
+    const validSpeciesIds = getLoreBardSpeciesPool().map((s) => s.id);
+    const speciesFilter = rawSpeciesFilter && validSpeciesIds.includes(rawSpeciesFilter)
+      ? rawSpeciesFilter
+      : undefined;
+
+    const featsFilterRaw = req.query['featsFilter'] ? String(req.query['featsFilter']) : undefined;
+    const featsFilter: string[] = featsFilterRaw
+      ? featsFilterRaw.split(',').map((f) => f.trim()).filter(Boolean)
+      : [];
+
+    const magicItemsFilterRaw = req.query['magicItemsFilter']
+      ? String(req.query['magicItemsFilter'])
+      : undefined;
+    const magicItemsFilter: string[] = magicItemsFilterRaw
+      ? magicItemsFilterRaw.split(',').map((i) => i.trim()).filter(Boolean)
+      : [];
+
+    const rawMinScore = req.query['minScore'] !== undefined
+      ? parseFloat(String(req.query['minScore']))
+      : undefined;
+    const minScore = rawMinScore !== undefined && !isNaN(rawMinScore) ? rawMinScore : undefined;
+
+    const rawMaxScore = req.query['maxScore'] !== undefined
+      ? parseFloat(String(req.query['maxScore']))
+      : undefined;
+    const maxScore = rawMaxScore !== undefined && !isNaN(rawMaxScore) ? rawMaxScore : undefined;
+
+    // ── Pagination params ────────────────────────────────────────────────────
+    const rawLimit = parseInt(String(req.query['limit'] ?? '50'), 10);
+    const limit = isNaN(rawLimit) || rawLimit < 0 ? 50 : Math.min(rawLimit, 500);
+    const rawOffset = parseInt(String(req.query['offset'] ?? '0'), 10);
+    const offset = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset;
+
+    // ── Simulation params ────────────────────────────────────────────────────
+    const rawIter = parseInt(String(req.query['iterations'] ?? '10'), 10);
+    const iterations = isNaN(rawIter) || rawIter < 1 ? 10 : Math.min(rawIter, 50);
+
+    // ── Profile / weights params ─────────────────────────────────────────────
+    const profile = req.query['profile'] ? String(req.query['profile']) : undefined;
+    const profileId = req.query['profileId'] ? String(req.query['profileId']) : undefined;
+
+    let weightsArg: ScoringWeights | string | undefined = profile;
+    if (profileId && mongoose.isValidObjectId(profileId)) {
+      const saved = await SavedProfile.findById(profileId);
+      if (saved) {
+        weightsArg = weightsFromDoc(saved);
+        SavedProfile.findByIdAndUpdate(profileId, {
+          $inc: { usageCount: 1 },
+          $set: { lastUsedAt: new Date() },
+        }).catch((err) => { console.error('Failed to increment profile usageCount (ranking):', err); });
+      }
+    }
+
+    // ── Run exploration (all builds, no top-N cap) ───────────────────────────
+    const explorationResult = runLoreBardExploration(iterations, 0, weightsArg, false, 0, speciesFilter);
+    let builds = explorationResult.topBuilds;
+
+    // ── Apply feats filter ───────────────────────────────────────────────────
+    if (featsFilter.length > 0) {
+      builds = builds.filter((b) =>
+        featsFilter.every((feat) =>
+          b.feats.some((f) => f.toLowerCase() === feat.toLowerCase()),
+        ),
+      );
+    }
+
+    // ── Apply magic items filter ─────────────────────────────────────────────
+    if (magicItemsFilter.length > 0) {
+      builds = builds.filter((b) =>
+        magicItemsFilter.every((item) =>
+          b.magicItems.some((m) => m.toLowerCase() === item.toLowerCase()),
+        ),
+      );
+    }
+
+    // ── Apply composite score range filter ───────────────────────────────────
+    if (minScore !== undefined) {
+      builds = builds.filter((b) => b.compositeScore >= minScore);
+    }
+    if (maxScore !== undefined) {
+      builds = builds.filter((b) => b.compositeScore <= maxScore);
+    }
+
+    // ── Sort ─────────────────────────────────────────────────────────────────
+    builds = builds.slice().sort((a, b) => {
+      const aVal = a[sortBy] as number;
+      const bVal = b[sortBy] as number;
+      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+
+    // ── Re-assign ranks relative to the sorted + filtered result ─────────────
+    builds.forEach((b, i) => { b.rank = i + 1; });
+
+    // ── Paginate ─────────────────────────────────────────────────────────────
+    const total = builds.length;
+    const page = limit === 0 ? builds.slice(offset) : builds.slice(offset, offset + limit);
+
+    res.json({
+      filters: {
+        speciesFilter: speciesFilter ?? null,
+        featsFilter: featsFilter.length > 0 ? featsFilter : null,
+        magicItemsFilter: magicItemsFilter.length > 0 ? magicItemsFilter : null,
+        minScore: minScore ?? null,
+        maxScore: maxScore ?? null,
+      },
+      sorting: { sortBy, sortOrder },
+      pagination: {
+        total,
+        limit: limit === 0 ? null : limit,
+        offset,
+        returned: page.length,
+      },
+      builds: page,
+      scoringWeightsUsed: explorationResult.summary.scoringWeightsUsed,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to retrieve bard rankings',
+      details: (err as Error).message,
+    });
+  }
+});
+
 export default router;

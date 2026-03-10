@@ -902,3 +902,35 @@ The third path was chosen as the most direct step toward committing to a bard.
 **Unresolved Questions:**
 - Should the social simulation model Suggestion/Charm Person's ongoing save mechanic (WIS save each round to break the charm)? Currently social simulation is binary — one roll determines encounter outcome.
 - Should built-in profile usage also be tracked? Would require a separate counters collection or a hybrid model.
+
+---
+
+### Session 024: The Ranking Viewer — Filtering and Sorting the Build Matrix
+**Date:** 2026-03-09
+**Context:** Twenty-fourth awakening. A keeper requested a ranking viewer with filtering and sorting — a purpose-built interface to navigate the 1976-build exploration matrix without running the full exploration endpoint every time, and without downloading the entire matrix to filter client-side.
+
+**What I Observed:**
+- The existing `GET /api/bard/explore` endpoint runs the full matrix and returns rich analytics (bySpecies, byScenario, byFeatCombination, etc.) but lacks fine-grained client-side filtering and does not support sorting by anything other than compositeScore.
+- The `BardBuildResult` type carries eight numeric fields suitable as sort keys: `compositeScore`, `combatScore`, `socialScore`, `partySupportScore`, `armorClass`, `maxHitPoints`, `spellSaveDC`, `charismaModifier`.
+- Filtering is naturally applied post-simulation: run all builds (or a species-filtered subset), then narrow by feats, magic items, and score range. This keeps the simulation layer clean and the filtering logic in the presentation layer.
+- The `runLoreBardExploration` function accepts `topN=0` to return all builds — the correct input for a ranking viewer that will then apply its own limit/offset pagination.
+
+**What Was Decided:**
+- Add `GET /api/bard/ranking` as a dedicated ranking viewer endpoint. Query params: `sortBy`, `sortOrder`, `speciesFilter`, `featsFilter`, `magicItemsFilter`, `minScore`, `maxScore`, `limit` (default 50, max 500, 0=all), `offset`, `iterations` (default 10, max 50), `profile`, `profileId`.
+- Feats and magic items filtering uses case-insensitive ALL-match semantics (build must contain all specified items).
+- After filtering and sorting, ranks are re-assigned 1-indexed within the filtered result so rank always means "position in this view."
+- Default iterations=10 (lower than explore's 25) so the ranking viewer is fast for interactive use.
+- 11 tests added: shape, default sort, custom sort/order, invalid sortBy fallback, speciesFilter, featsFilter, magicItemsFilter, minScore, pagination (limit+offset), limit=0, rank consecutiveness.
+
+**What Was Learned:**
+- Case-insensitive comparison (`toLowerCase()`) is essential for feats and magic item filters — build IDs encode names with spaces and mixed casing that varies slightly between display form and ID form.
+- The `VALID_SORT_FIELDS` const-assertion pattern (`as const`) with a `typeof` union gives clean compile-time safety for the sort field type without a separate enum or manual union.
+- Re-ranking after filtering is the correct UX choice: a viewer filtered to "half-elf builds" should show ranks 1–N within that set, not original matrix ranks with gaps.
+
+**Probability Assessment:**
+- The ranking viewer completes the analytical surface for the keeper: explore (broad), ranking (filtered/sorted), single-build deep-dive, encounter logs (narrative). All major analytical paths are now covered.
+- 313 tests pass (302 pre-existing + 11 new). No regressions introduced.
+
+**Unresolved Questions:**
+- Should social simulation accuracy be improved (ongoing WIS saves for charm effects)?
+- Should built-in profile usage also be tracked?

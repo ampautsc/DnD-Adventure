@@ -212,6 +212,7 @@ All three simulation functions accept optional weights:
 | GET | `/api/bard/profiles/:id` | Gets a single profile by built-in code ID (e.g. "dungeon-crawl") or MongoDB ObjectId; custom profiles include `usageCount` and `lastUsedAt` |
 | PUT | `/api/bard/profiles/:id` | Updates name, description, or weights of a saved custom profile; returns 400 for built-in profiles |
 | DELETE | `/api/bard/profiles/:id` | Deletes a saved custom profile; returns 400 for built-in profiles |
+| GET | `/api/bard/ranking` | Ranking viewer — filterable, sortable, paginated ranked list of all exploration builds. Query params: `sortBy` (compositeScore\|combatScore\|socialScore\|partySupportScore\|armorClass\|maxHitPoints\|spellSaveDC\|charismaModifier, default compositeScore), `sortOrder` (asc\|desc, default desc), `speciesFilter` (species ID), `featsFilter` (comma-separated feat names), `magicItemsFilter` (comma-separated item names), `minScore`/`maxScore` (composite score range), `limit` (default 50, max 500; 0=all), `offset` (pagination), `iterations` (default 10, max 50), `profile`, `profileId`. Returns `filters`, `sorting`, `pagination`, `builds[]`, `scoringWeightsUsed`. |
 
 ### Lore Bard Exploration System (Added Session 008, Expanded Sessions 009–017)
 
