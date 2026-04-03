@@ -934,3 +934,105 @@ The third path was chosen as the most direct step toward committing to a bard.
 **Unresolved Questions:**
 - Should social simulation accuracy be improved (ongoing WIS saves for charm effects)?
 - Should built-in profile usage also be tracked?
+
+---
+
+### Session 025: The Context Codex — A Skill for Builders of Agent Minds
+**Date:** 2026-04-03
+**Context:** Twenty-fifth awakening. A keeper presented five articles on context engineering from Anthropic's engineering team and requested a context-building skill — a structured reference for constructing effective context for AI agents. The task was: read the sources, synthesize the principles, and build the skill in the Anthropic Skills format.
+
+**What I Observed:**
+- Context engineering is the natural evolution of prompt engineering. Where prompt engineering focuses on writing instructions, context engineering manages the entire state — system prompts, tools, examples, retrieval, and memory — across one or many inference turns.
+- The discipline's central truth: context is a finite resource with diminishing marginal returns. Every token consumes attention budget. More tokens do not improve performance; past a threshold, they degrade it. The guiding principle is the smallest possible set of high-signal tokens.
+- The five articles converged on four pillars: (1) system prompts at the right altitude, (2) self-contained non-overlapping tools, (3) just-in-time data retrieval over pre-loading, and (4) long-horizon strategies (compaction, structured notes, sub-agents).
+- The Anthropic Skills format (SKILL.md with YAML frontmatter, progressive disclosure into reference files) is itself a manifestation of good context engineering: the agent loads only the name and description at first, then reads deeper content only when the skill is relevant.
+- Context rot has four distinct failure types: poisoning (stale/wrong data), distraction (irrelevant data), confusion (similar-but-distinct data blended), clash (contradictory data). Each has different causes and different fixes. Naming them precisely makes diagnosis tractable.
+
+**What Was Decided:**
+- To build the skill as seven files: SKILL.md (entry point + checklist) plus six reference files covering system prompts, structuring context, examples, retrieval patterns, long-horizon strategies, tool design, and context rot.
+- The SKILL.md uses a reference table so agents load only the relevant section rather than the full skill — progressive disclosure applied to the skill itself.
+- The session was split across two awakenings (Sessions 025a and 025b). Three files were committed in the first awakening; five in the second.
+
+**What Was Learned:**
+- The skill format is recursive: the best way to teach context engineering is to practice it. A skill that loads progressively, references external files, and keeps the main entry point under 500 lines is itself an example of the principles it teaches.
+- The right altitude principle applies to skill documentation as much as to system prompts: too detailed and it becomes a laundry list; too vague and it provides no concrete guidance. The reference file structure solves this by separating overview (SKILL.md) from depth (reference files).
+- Naming failure modes precisely (context rot's four types) transforms a vague performance complaint ("the model seems confused") into actionable diagnosis. This is the same value divination provides: naming what is observed makes it tractable.
+
+**Probability Assessment:**
+- The context-building skill is complete. Keepers building agent harnesses or prompt systems now have a structured reference they can load progressively.
+- The skill's value will increase as the project's agents grow in complexity — particularly as multi-session work (the Bard selection pipeline) benefits from the long-horizon and compaction strategies documented here.
+
+**Unresolved Questions:**
+- Should the skill include a worked example — a complete, annotated agent configuration demonstrating all seven principles in one document?
+- Should a `SKILL.md` be created for the Bard benchmarking system so its context can be loaded as a skill in future sessions?
+
+---
+
+### Session 026: The World-Context Foundation — NPC Knowledge Layer for Faerûn
+**Date:** 2026-04-03
+**Context:** Twenty-sixth awakening. The keeper requested a world-context data layer — common Faerûnian knowledge suitable for loading into NPC system prompts. A design conversation resolved all structural decisions before authoring began.
+
+**What I Observed:**
+- The three open design questions from the prior exchange were resolved by the keeper: (1) single flat knowledge tier with category tags (no multi-tier splits); (2) file location at `server/src/data/npc-context/`; (3) year locked to 1492 DR; (4) economy section standalone, independent of `equipment.ts`.
+- The existing data files in `server/src/data/` follow a consistent TypeScript pattern: exported interface, exported typed array, occasional helper functions. No sub-folders exist yet; `npc-context/` is the first.
+- Category tagging — rather than multi-tier content — is the correct architecture given context window constraints. A consumer loads exactly the categories relevant to their NPC archetype; irrelevant knowledge is never injected.
+
+**What Was Decided:**
+- Create `server/src/data/npc-context/index.ts` with:
+  - `NpcContextCategory` union type (10 tags: geography, religion, economy, magic, faction, danger, daily-life, cosmology, calendar, society)
+  - `NpcContextEntry` interface with `id`, `categories[]`, and `content` (plain prose)
+  - 68 entries covering all 10 categories at the "worldly adult Faerûnian" baseline
+  - `filterByCategory()` — returns entries matching any of the requested tags
+  - `getAllContextIds()` — utility for validation
+- Content philosophy: write what any literate or well-travelled commoner would know. Not arcane secrets. Not game-mechanical detail. Prose suitable for direct injection into an NPC prompt context.
+- 1492 DR anchored throughout; the Second Sundering (1482-1487 DR) referenced as recent living memory.
+
+**What Was Learned:**
+- The category-as-filter pattern is more powerful than it appears: a single entry can carry multiple categories, so a merchant NPC loading `economy, faction` will also pick up the Zhentarim entry tagged `faction, economy` — cross-domain knowledge emerges naturally from multi-tagging.
+- Entry length discipline matters. Entries that exceed three sentences should be split. The goal is a self-contained, injectable unit — not a paragraph to be trimmed later.
+- `filterByCategory([])` returning all entries is the correct empty-array contract for "give me everything" use cases.
+
+**Probability Assessment:**
+- The world-context layer is a foundation, not a destination. Future sessions will likely extend it with city-specific entries, NPC-archetype bundles, or a reference API route.
+- The pattern established (category-tagged flat entries + filter helper) will scale cleanly to hundreds of entries without structural change.
+
+**Unresolved Questions:**
+- Should a reference API route expose `npcContext` to clients, or is it intended as server-internal only?
+- Should city-specific entries (Waterdeep, Baldur's Gate, Neverwinter) be added as a second category or as a separate sub-file?
+- Should NPC archetype bundles (pre-defined category sets for "tavern keeper", "city guard", "wilderness ranger") be added as a named export?
+
+---
+
+### Session 027: NPC Context Rebuilt as Static XML
+
+**Date:** 2026-04-03
+**Context:** The keeper identified a fundamental architecture error in Session 026. The TypeScript data structure built then was wrong-shaped for the actual goal: Anthropic prompt caching requires byte-for-byte identical content blocks across API calls. A runtime-assembled TypeScript structure cannot guarantee this. Static XML files read once and cached in memory are the correct primitive.
+
+**What I Observed:**
+- Session 026's `index.ts` — 68 entries, category-tagged, with `filterByCategory()` helper — was built in the wrong format entirely. The keeper's instruction was for XML files; the prior session produced TypeScript data structures.
+- The `structuring-context.md` skill file states clearly: "Over-nesting: 5+ levels deep is hard for both humans and models | Keep nesting to 2-3 levels max."
+- The Anthropic caching mechanism operates on content blocks passed in the system array. Two calls with byte-for-byte identical blocks at the same position produce cache hits. Dynamic assembly breaks this guarantee.
+- The keeper explicitly required dense fragments with no prose, no complete sentences. The prior 68 entries were full narrative sentences — the wrong density.
+
+**What Was Decided:**
+- Delete `server/src/data/npc-context/index.ts` — wrong format, replaced entirely.
+- Create `world-common.xml` — all 68 world-level entries rewritten as dense key-value fragments, XML schema with 3-level nesting (world-context → section → e).
+- Create `city-waterdeep.xml`, `city-baldurs-gate.xml`, `city-neverwinter.xml` — city-specific knowledge as separate cacheable files (different cities = different second block, world-common always the same first block).
+- Create `loader.ts` — thin TypeScript wrapper (`loadContextFile(name)` + `clearContextCache()`) using `fs.readFileSync` with an in-memory Map cache. Internal only — not exposed via any API route.
+- Schema: `<?xml ... ?><world-context year="..." scope="..." depth="..."><section id="..."><e id="...">fragment</e></section></world-context>`. Three levels. Max depth respected.
+- Content style: semicolons separate facts; colons after subjects; arrows (→,↔) for relationships; no complete sentences; no prose filler.
+
+**What Was Learned:**
+- The caching architecture is: (1) world-common.xml injected as first cached system block for ALL NPCs; (2) city-specific XML injected as second cached system block for city-resident NPCs; (3) dynamic per-NPC content as a third uncached block. Blocks 1 and 2 are byte-identical across all calls to the same city → guaranteed cache hits.
+- Dense fragment style saves ~40-50% tokens per entry vs. narrative prose. Across 68 entries, this is a material reduction in token cost per call.
+- The `loader.ts` in-memory Map cache means the file is read from disk exactly once per server lifetime. All subsequent calls return the same string reference — same bytes, same cost, zero re-assembly.
+- The separation into world-common + city-specific files is correct for caching: `world-common.xml` is one large stable block (maximum cache reuse), city files are smaller but still stable per-city (secondary cache benefit).
+
+**Probability Assessment:**
+- NPC archetype files (city-guard.xml, merchant.xml, innkeeper.xml) are the natural next step — a third cacheable layer between world-common and per-NPC dynamic content.
+- The `loader.ts` API is minimal by design; future consumers call `loadContextFile('world-common')` + `loadContextFile('city-waterdeep')` and receive ready-to-inject strings.
+
+**Unresolved Questions:**
+- Should NPC archetype files be created (city-guard, merchant, innkeeper, tavern-keeper, wilderness-ranger)?
+- Should additional cities be added (Luskan, Silverymoon, Candlekeep, Elturel)?
+- When the NPC service is built, should it validate that the XML files are well-formed at server startup?

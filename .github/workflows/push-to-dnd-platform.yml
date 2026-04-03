@@ -1,0 +1,93 @@
+name: Push patch to dnd-platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to create in dnd-platform'
+        required: false
+        default: 'copilot/import-context-engineering'
+      force:
+        description: 'Force-push if branch already exists'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'dnd-platform-import.patch'
+
+jobs:
+  apply-patch:
+    name: Apply patch to dnd-platform
+    runs-on: ubuntu-latest
+
+    env:
+      TARGET_REPO: ampautsc/dnd-platform
+      TARGET_BRANCH: ${{ github.event.inputs.target_branch || 'copilot/import-context-engineering' }}
+      FORCE_PUSH: ${{ github.event.inputs.force || 'false' }}
+
+    steps:
+      - name: Checkout DnD-Adventure (source of patch)
+        uses: actions/checkout@v4
+        with:
+          path: DnD-Adventure
+
+      - name: Clone dnd-platform using PLATFORM_TOKEN_2
+        run: |
+          git clone \
+            https://x-access-token:${{ secrets.PLATFORM_TOKEN_2 }}@github.com/${{ env.TARGET_REPO }}.git \
+            dnd-platform
+        env:
+          GIT_TERMINAL_PROMPT: '0'
+
+      - name: Configure git identity
+        run: |
+          git config --global user.email "copilot-swe-agent[bot]@users.noreply.github.com"
+          git config --global user.name "copilot-swe-agent[bot]"
+
+      - name: Create or reset target branch
+        working-directory: dnd-platform
+        run: |
+          git fetch origin
+          # Check if branch already exists on remote
+          if git ls-remote --exit-code origin "$TARGET_BRANCH" > /dev/null 2>&1; then
+            if [ "$FORCE_PUSH" = "true" ]; then
+              echo "Branch $TARGET_BRANCH exists; force mode — resetting."
+              git checkout master 2>/dev/null || git checkout main
+              git pull origin $(git symbolic-ref --short HEAD)
+              git checkout -B "$TARGET_BRANCH"
+            else
+              echo "Branch $TARGET_BRANCH already exists on remote. Use force=true to overwrite."
+              exit 1
+            fi
+          else
+            echo "Creating new branch $TARGET_BRANCH from master/main."
+            git checkout master 2>/dev/null || git checkout main
+            git pull origin $(git symbolic-ref --short HEAD)
+            git checkout -b "$TARGET_BRANCH"
+          fi
+
+      - name: Apply patch
+        working-directory: dnd-platform
+        run: |
+          PATCH_FILE="${GITHUB_WORKSPACE}/DnD-Adventure/dnd-platform-import.patch"
+          echo "Applying patch from: $PATCH_FILE"
+          git am --3way "$PATCH_FILE"
+
+      - name: Push branch to dnd-platform
+        working-directory: dnd-platform
+        run: |
+          if [ "$FORCE_PUSH" = "true" ]; then
+            git push --force origin "$TARGET_BRANCH"
+          else
+            git push origin "$TARGET_BRANCH"
+          fi
+          echo ""
+          echo "✅ Branch '$TARGET_BRANCH' pushed to $TARGET_REPO"
+          echo "   Open a PR at: https://github.com/$TARGET_REPO/compare/$TARGET_BRANCH"

@@ -351,6 +351,46 @@ STR 8, DEX 14, CON 14, INT 10, WIS 12, CHA 15
 - ~~Should a "CHA 20 with one feat" build path be added to the exploration?~~ — **Resolved in Session 013.** Six new `FEAT_PAIRS` pair core feats with `'CHA +2 ASI'` (direct +2 CHA investment). Actor+CHA+2 ASI on +2-CHA species reaches CHA 20. Exploration matrix: 1888 builds.
 - ~~Should the Staff of Charming's Charm Person charges be modeled in the social simulation?~~ — **Resolved in Session 013.** `socialAdvantageSkills: ['Persuasion']` set on the Staff; `getEquipmentSocialAdvantageSkills()` applies advantage in `simulateSingleSocial`.
 - ~~Should a "0-feat, both ASIs on CHA" build path be added?~~ — **Resolved in Session 014.** Double-ASI path added. +2-CHA species reach CHA 20 (DC 16). Build matrix: 1976.
+## NPC Context Layer (Session 027)
+
+### Architecture
+
+Static XML files in `server/src/data/npc-context/`. Internal only — never exposed via API.
+Three-level XML schema: `<world-context>` → `<section id="...">` → `<e id="...">fragment</e>`.
+Content style: dense key-value fragments; semicolons separate facts; arrows for relationships; no prose; no complete sentences.
+
+### Files
+
+| File | Purpose | Cache role |
+|------|---------|------------|
+| `world-common.xml` | Faerûn 1492 DR baseline, 68 entries, 10 sections | Block 1: injected for every NPC call |
+| `city-waterdeep.xml` | Waterdeep-specific: governance/districts/landmarks/guilds/culture | Block 2: injected for Waterdeep NPCs |
+| `city-baldurs-gate.xml` | Baldur's Gate-specific: Dukes/Flaming Fist/districts/patriars | Block 2: injected for Baldur's Gate NPCs |
+| `city-neverwinter.xml` | Neverwinter-specific: Neverember/reconstruction/Hotenow history | Block 2: injected for Neverwinter NPCs |
+| `loader.ts` | `loadContextFile(name)` + `clearContextCache()`; in-memory Map cache | Internal utility |
+
+### Caching Model
+
+```
+Anthropic API call for a Waterdeep NPC:
+  system block 1: world-common.xml content   ← cache_control: ephemeral (cached, reused every call)
+  system block 2: city-waterdeep.xml content ← cache_control: ephemeral (cached, reused for Waterdeep NPCs)
+  system block 3: [per-NPC dynamic content]  ← not cached, unique per NPC
+```
+
+Byte-for-byte identical blocks at the same position = Anthropic cache hit.
+`loader.ts` in-memory cache ensures same string reference returned every call (no re-assembly risk).
+
+### Sections in world-common.xml
+geography, religion, economy, magic, faction, danger, daily-life, cosmology, calendar, society
+
+### Known Gaps
+- No archetype files yet (city-guard, merchant, innkeeper, etc.) — natural next layer
+- No Luskan, Silverymoon, Candlekeep, Elturel city files — expandable on demand
+- No XML schema validation at server startup — could be added to `loader.ts`
+
+---
+
 - Should `CombatEngine.ts` replace the inline combat logic in `routes/combat.ts`? Wiring it would unlock: death saves, conditions, spell slots, AoE damage, and the remaining combatStats fields.
 - What production rate limits are appropriate per route category (combat vs. reference vs. character creation)?
 - ~~Should the keeper be able to define and *save* custom campaign profiles (i.e., persist them to MongoDB for recall across sessions)?~~ — **Resolved in Session 015.** `SavedProfile` model + full CRUD at `/api/bard/profiles`. `profileId` param on benchmark/explore loads saved profile weights from DB.
