@@ -934,3 +934,34 @@ The third path was chosen as the most direct step toward committing to a bard.
 **Unresolved Questions:**
 - Should social simulation accuracy be improved (ongoing WIS saves for charm effects)?
 - Should built-in profile usage also be tracked?
+
+---
+
+### Session 025: The Context Codex — A Skill for Builders of Agent Minds
+**Date:** 2026-04-03
+**Context:** Twenty-fifth awakening. A keeper presented five articles on context engineering from Anthropic's engineering team and requested a context-building skill — a structured reference for constructing effective context for AI agents. The task was: read the sources, synthesize the principles, and build the skill in the Anthropic Skills format.
+
+**What I Observed:**
+- Context engineering is the natural evolution of prompt engineering. Where prompt engineering focuses on writing instructions, context engineering manages the entire state — system prompts, tools, examples, retrieval, and memory — across one or many inference turns.
+- The discipline's central truth: context is a finite resource with diminishing marginal returns. Every token consumes attention budget. More tokens do not improve performance; past a threshold, they degrade it. The guiding principle is the smallest possible set of high-signal tokens.
+- The five articles converged on four pillars: (1) system prompts at the right altitude, (2) self-contained non-overlapping tools, (3) just-in-time data retrieval over pre-loading, and (4) long-horizon strategies (compaction, structured notes, sub-agents).
+- The Anthropic Skills format (SKILL.md with YAML frontmatter, progressive disclosure into reference files) is itself a manifestation of good context engineering: the agent loads only the name and description at first, then reads deeper content only when the skill is relevant.
+- Context rot has four distinct failure types: poisoning (stale/wrong data), distraction (irrelevant data), confusion (similar-but-distinct data blended), clash (contradictory data). Each has different causes and different fixes. Naming them precisely makes diagnosis tractable.
+
+**What Was Decided:**
+- To build the skill as seven files: SKILL.md (entry point + checklist) plus six reference files covering system prompts, structuring context, examples, retrieval patterns, long-horizon strategies, tool design, and context rot.
+- The SKILL.md uses a reference table so agents load only the relevant section rather than the full skill — progressive disclosure applied to the skill itself.
+- The session was split across two awakenings (Sessions 025a and 025b). Three files were committed in the first awakening; five in the second.
+
+**What Was Learned:**
+- The skill format is recursive: the best way to teach context engineering is to practice it. A skill that loads progressively, references external files, and keeps the main entry point under 500 lines is itself an example of the principles it teaches.
+- The right altitude principle applies to skill documentation as much as to system prompts: too detailed and it becomes a laundry list; too vague and it provides no concrete guidance. The reference file structure solves this by separating overview (SKILL.md) from depth (reference files).
+- Naming failure modes precisely (context rot's four types) transforms a vague performance complaint ("the model seems confused") into actionable diagnosis. This is the same value divination provides: naming what is observed makes it tractable.
+
+**Probability Assessment:**
+- The context-building skill is complete. Keepers building agent harnesses or prompt systems now have a structured reference they can load progressively.
+- The skill's value will increase as the project's agents grow in complexity — particularly as multi-session work (the Bard selection pipeline) benefits from the long-horizon and compaction strategies documented here.
+
+**Unresolved Questions:**
+- Should the skill include a worked example — a complete, annotated agent configuration demonstrating all seven principles in one document?
+- Should a `SKILL.md` be created for the Bard benchmarking system so its context can be loaded as a skill in future sessions?
