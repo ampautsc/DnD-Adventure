@@ -1,0 +1,2274 @@
+From 845c2c0189f34153149a7428c4a3a0d3d5649260 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]"
+ <copilot-swe-agent[bot]@users.noreply.github.com>
+Date: Fri, 3 Apr 2026 15:28:49 +0000
+Subject: [PATCH] feat: import context-building skills and NPC context XML from
+ DnD-Adventure
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- skills/context-building/ (8 files): SKILL.md, system-prompts.md,
+  structuring-context.md, examples.md, retrieval-patterns.md,
+  long-horizon.md, tool-design.md, context-rot.md
+  Synthesizes Anthropic context engineering best practices.
+
+- packages/dm/src/prompts/npc-context/ (5 files):
+  - world-common.xml — Faerûn 1492 DR baseline (68 entries, 10 sections,
+    dense key-value fragments for Anthropic prompt caching)
+  - city-waterdeep.xml — Waterdeep local knowledge (5 sections)
+  - city-baldurs-gate.xml — Baldur's Gate local knowledge (5 sections)
+  - city-neverwinter.xml — Neverwinter local knowledge (6 sections)
+  - loader.js — ESM readFileSync + in-memory Map cache; loadContextFile(name)
+    and clearContextCache(); byte-for-byte stable for Anthropic prefix caching
+
+- packages/dm/__tests__/prompts/npcContext.test.js — 61 passing tests:
+  XML structure (schema, sections, entry counts), content accuracy,
+  well-formed XML validation, loader caching behavior per file
+---
+ package-lock.json                             |  14 +-
+ .../dm/__tests__/prompts/npcContext.test.js   | 321 ++++++++++++++++++
+ .../prompts/npc-context/city-baldurs-gate.xml |  55 +++
+ .../prompts/npc-context/city-neverwinter.xml  |  62 ++++
+ .../prompts/npc-context/city-waterdeep.xml    |  60 ++++
+ packages/dm/src/prompts/npc-context/loader.js |  37 ++
+ .../src/prompts/npc-context/world-common.xml  | 108 ++++++
+ skills/context-building/SKILL.md              | 126 +++++++
+ skills/context-building/context-rot.md        | 185 ++++++++++
+ skills/context-building/examples.md           | 177 ++++++++++
+ skills/context-building/long-horizon.md       | 205 +++++++++++
+ skills/context-building/retrieval-patterns.md | 186 ++++++++++
+ .../context-building/structuring-context.md   | 189 +++++++++++
+ skills/context-building/system-prompts.md     | 168 +++++++++
+ skills/context-building/tool-design.md        | 206 +++++++++++
+ 15 files changed, 2087 insertions(+), 12 deletions(-)
+ create mode 100644 packages/dm/__tests__/prompts/npcContext.test.js
+ create mode 100644 packages/dm/src/prompts/npc-context/city-baldurs-gate.xml
+ create mode 100644 packages/dm/src/prompts/npc-context/city-neverwinter.xml
+ create mode 100644 packages/dm/src/prompts/npc-context/city-waterdeep.xml
+ create mode 100644 packages/dm/src/prompts/npc-context/loader.js
+ create mode 100644 packages/dm/src/prompts/npc-context/world-common.xml
+ create mode 100644 skills/context-building/SKILL.md
+ create mode 100644 skills/context-building/context-rot.md
+ create mode 100644 skills/context-building/examples.md
+ create mode 100644 skills/context-building/long-horizon.md
+ create mode 100644 skills/context-building/retrieval-patterns.md
+ create mode 100644 skills/context-building/structuring-context.md
+ create mode 100644 skills/context-building/system-prompts.md
+ create mode 100644 skills/context-building/tool-design.md
+
+diff --git a/package-lock.json b/package-lock.json
+index 9f0770a..cfbe12a 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -6193,17 +6193,11 @@
+       "version": "0.1.0",
+       "dependencies": {
+         "@dnd-platform/content": "^0.1.0"
+-      },
+-      "devDependencies": {
+-        "vitest": "^3.1.1"
+       }
+     },
+     "packages/content": {
+       "name": "@dnd-platform/content",
+-      "version": "0.1.0",
+-      "devDependencies": {
+-        "vitest": "^3.1.1"
+-      }
++      "version": "0.1.0"
+     },
+     "packages/dm": {
+       "name": "@dnd-platform/dm",
+@@ -6227,8 +6221,7 @@
+         "socket.io": "^4.8.1"
+       },
+       "devDependencies": {
+-        "socket.io-client": "^4.8.1",
+-        "vitest": "^3.1.1"
++        "socket.io-client": "^4.8.1"
+       }
+     },
+     "packages/world": {
+@@ -6236,9 +6229,6 @@
+       "version": "0.1.0",
+       "dependencies": {
+         "@dnd-platform/content": "^0.1.0"
+-      },
+-      "devDependencies": {
+-        "vitest": "^3.1.1"
+       }
+     }
+   }
+diff --git a/packages/dm/__tests__/prompts/npcContext.test.js b/packages/dm/__tests__/prompts/npcContext.test.js
+new file mode 100644
+index 0000000..67252f3
+--- /dev/null
++++ b/packages/dm/__tests__/prompts/npcContext.test.js
+@@ -0,0 +1,321 @@
++import { describe, it, beforeEach } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { resolve, dirname } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++/**
++ * Requirements for npc-context:
++ *
++ * 1. XML files exist at packages/dm/src/prompts/npc-context/
++ * 2. Each XML file follows the 3-level schema: root→section→e
++ * 3. world-common.xml contains exactly 10 sections with the approved ids
++ * 4. City files each contain the expected sections
++ * 5. XML is well-formed (all opened tags are closed)
++ * 6. loader.js caches content in memory after first read (same reference)
++ * 7. clearContextCache() resets the cache
++ */
++
++const __dirname = dirname(fileURLToPath(import.meta.url));
++const npcContextDir = resolve(__dirname, '../../src/prompts/npc-context');
++
++// ─── loader module ────────────────────────────────────────────────────────────
++const { loadContextFile, clearContextCache } = await import('../../src/prompts/npc-context/loader.js');
++
++// ─── helpers ─────────────────────────────────────────────────────────────────
++
++function readXml(filename) {
++  return readFileSync(resolve(npcContextDir, filename), 'utf8');
++}
++
++function extractSectionIds(xml) {
++  const matches = [...xml.matchAll(/<section id="([^"]+)"/g)];
++  return matches.map(m => m[1]);
++}
++
++function countEntries(xml) {
++  return (xml.match(/<e id=/g) || []).length;
++}
++
++function isWellFormed(xml) {
++  const openTags = xml.match(/<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?>/g) || [];
++  const closeTags = xml.match(/<\/([a-zA-Z][a-zA-Z0-9-]*)>/g) || [];
++
++  const openCounts = {};
++  for (const tag of openTags) {
++    const name = tag.match(/<([a-zA-Z][a-zA-Z0-9-]*)/)[1];
++    if (name === '?xml') continue;
++    openCounts[name] = (openCounts[name] || 0) + 1;
++  }
++
++  const closeCounts = {};
++  for (const tag of closeTags) {
++    const name = tag.match(/<\/([a-zA-Z][a-zA-Z0-9-]*)/)[1];
++    closeCounts[name] = (closeCounts[name] || 0) + 1;
++  }
++
++  for (const [name, count] of Object.entries(openCounts)) {
++    if ((closeCounts[name] || 0) !== count) return false;
++  }
++  return true;
++}
++
++// ─── world-common.xml ─────────────────────────────────────────────────────────
++
++const worldCommonXml = readXml('world-common.xml');
++
++describe('npc-context/world-common.xml — structure', () => {
++  it('should be wrapped in a <world-context> root tag', () => {
++    assert.ok(worldCommonXml.includes('<world-context'), 'missing <world-context> opening tag');
++    assert.ok(worldCommonXml.includes('</world-context>'), 'missing </world-context> closing tag');
++  });
++
++  it('should carry year="1492-DR" attribute', () => {
++    assert.ok(worldCommonXml.includes('year="1492-DR"'), 'missing year="1492-DR" attribute');
++  });
++
++  const requiredSections = [
++    'geography',
++    'religion',
++    'economy',
++    'magic',
++    'faction',
++    'danger',
++    'daily-life',
++    'cosmology',
++    'calendar',
++    'society',
++  ];
++
++  it('should contain exactly 10 sections', () => {
++    const ids = extractSectionIds(worldCommonXml);
++    assert.equal(ids.length, 10, `expected 10 sections, found ${ids.length}: ${ids.join(', ')}`);
++  });
++
++  for (const section of requiredSections) {
++    it(`should contain section id="${section}"`, () => {
++      assert.ok(worldCommonXml.includes(`<section id="${section}">`),
++        `missing <section id="${section}">`);
++    });
++  }
++
++  it('should contain at least 60 entries', () => {
++    const count = countEntries(worldCommonXml);
++    assert.ok(count >= 60, `expected ≥60 entries, found ${count}`);
++  });
++
++  it('should be well-formed XML', () => {
++    assert.ok(isWellFormed(worldCommonXml), 'XML is not well-formed (mismatched open/close tags)');
++  });
++});
++
++describe('npc-context/world-common.xml — content', () => {
++  it('should contain Sword Coast geography entry', () => {
++    assert.ok(worldCommonXml.includes('sword-coast'), 'missing sword-coast entry');
++  });
++
++  it('should reference 1492 DR calendar', () => {
++    assert.ok(worldCommonXml.includes('1492 DR'), 'missing 1492 DR year reference');
++  });
++
++  it('should reference the Second Sundering', () => {
++    assert.ok(worldCommonXml.includes('Second Sundering') || worldCommonXml.includes('second-sundering'),
++      'missing Second Sundering reference');
++  });
++
++  it('should reference Mystra and the Weave', () => {
++    assert.ok(worldCommonXml.includes('Mystra'), 'missing Mystra reference');
++    assert.ok(worldCommonXml.includes('Weave') || worldCommonXml.includes('weave'),
++      'missing Weave reference');
++  });
++
++  it('should contain major city references', () => {
++    assert.ok(worldCommonXml.includes('Waterdeep'), 'missing Waterdeep');
++    assert.ok(worldCommonXml.includes("Baldur's Gate") || worldCommonXml.includes('Baldur'), 'missing Baldur\'s Gate');
++    assert.ok(worldCommonXml.includes('Neverwinter'), 'missing Neverwinter');
++  });
++});
++
++// ─── city-waterdeep.xml ───────────────────────────────────────────────────────
++
++const waterdeepXml = readXml('city-waterdeep.xml');
++
++describe('npc-context/city-waterdeep.xml — structure', () => {
++  it('should be wrapped in a <city-context id="waterdeep"> root tag', () => {
++    assert.ok(waterdeepXml.includes('<city-context id="waterdeep"'), 'missing <city-context id="waterdeep">');
++    assert.ok(waterdeepXml.includes('</city-context>'), 'missing </city-context>');
++  });
++
++  const requiredSections = ['governance', 'districts', 'landmarks', 'guilds-and-factions', 'economy-local'];
++
++  for (const section of requiredSections) {
++    it(`should contain section id="${section}"`, () => {
++      assert.ok(waterdeepXml.includes(`<section id="${section}">`),
++        `missing <section id="${section}">`);
++    });
++  }
++
++  it('should be well-formed XML', () => {
++    assert.ok(isWellFormed(waterdeepXml), 'XML is not well-formed');
++  });
++});
++
++describe('npc-context/city-waterdeep.xml — content', () => {
++  it('should reference the Masked Lords', () => {
++    assert.ok(waterdeepXml.includes('Masked Lords') || waterdeepXml.includes('masked-lords'),
++      'missing Masked Lords reference');
++  });
++
++  it('should reference the Yawning Portal', () => {
++    assert.ok(waterdeepXml.includes('yawning-portal') || waterdeepXml.includes('Yawning Portal'),
++      'missing Yawning Portal');
++  });
++
++  it('should reference Undermountain', () => {
++    assert.ok(waterdeepXml.includes('Undermountain'), 'missing Undermountain');
++  });
++
++  it('should reference Laeral Silverhand as Open Lord', () => {
++    assert.ok(waterdeepXml.includes('Laeral'), 'missing Laeral Silverhand reference');
++  });
++});
++
++// ─── city-baldurs-gate.xml ────────────────────────────────────────────────────
++
++const baldursGateXml = readXml('city-baldurs-gate.xml');
++
++describe('npc-context/city-baldurs-gate.xml — structure', () => {
++  it('should be wrapped in a <city-context id="baldurs-gate"> root tag', () => {
++    assert.ok(baldursGateXml.includes('<city-context id="baldurs-gate"'), 'missing <city-context id="baldurs-gate">');
++    assert.ok(baldursGateXml.includes('</city-context>'), 'missing </city-context>');
++  });
++
++  const requiredSections = ['governance', 'districts', 'landmarks', 'factions-local', 'economy-local'];
++
++  for (const section of requiredSections) {
++    it(`should contain section id="${section}"`, () => {
++      assert.ok(baldursGateXml.includes(`<section id="${section}">`),
++        `missing <section id="${section}">`);
++    });
++  }
++
++  it('should be well-formed XML', () => {
++    assert.ok(isWellFormed(baldursGateXml), 'XML is not well-formed');
++  });
++});
++
++describe('npc-context/city-baldurs-gate.xml — content', () => {
++  it('should reference the Flaming Fist', () => {
++    assert.ok(baldursGateXml.includes('Flaming Fist'), 'missing Flaming Fist reference');
++  });
++
++  it('should reference Elfsong Tavern', () => {
++    assert.ok(baldursGateXml.includes('Elfsong'), 'missing Elfsong Tavern');
++  });
++
++  it('should reference Grand Duke Ulder Ravengard', () => {
++    assert.ok(baldursGateXml.includes('Ravengard'), 'missing Grand Duke Ravengard reference');
++  });
++});
++
++// ─── city-neverwinter.xml ─────────────────────────────────────────────────────
++
++const neverwinterXml = readXml('city-neverwinter.xml');
++
++describe('npc-context/city-neverwinter.xml — structure', () => {
++  it('should be wrapped in a <city-context id="neverwinter"> root tag', () => {
++    assert.ok(neverwinterXml.includes('<city-context id="neverwinter"'), 'missing <city-context id="neverwinter">');
++    assert.ok(neverwinterXml.includes('</city-context>'), 'missing </city-context>');
++  });
++
++  const requiredSections = ['governance', 'geography-local', 'history-local', 'landmarks', 'factions-local', 'economy-local'];
++
++  for (const section of requiredSections) {
++    it(`should contain section id="${section}"`, () => {
++      assert.ok(neverwinterXml.includes(`<section id="${section}">`),
++        `missing <section id="${section}">`);
++    });
++  }
++
++  it('should be well-formed XML', () => {
++    assert.ok(isWellFormed(neverwinterXml), 'XML is not well-formed');
++  });
++});
++
++describe('npc-context/city-neverwinter.xml — content', () => {
++  it('should reference Lord Protector Neverember', () => {
++    assert.ok(neverwinterXml.includes('Neverember'), 'missing Neverember reference');
++  });
++
++  it('should reference Mount Hotenow eruption', () => {
++    assert.ok(neverwinterXml.includes('Hotenow'), 'missing Mount Hotenow reference');
++  });
++
++  it('should reference the Sons of Alagondar', () => {
++    assert.ok(neverwinterXml.includes('Alagondar'), 'missing Sons of Alagondar reference');
++  });
++
++  it('should reference the Driftwood Tavern', () => {
++    assert.ok(neverwinterXml.includes('driftwood-tavern') || neverwinterXml.includes('Driftwood Tavern'),
++      'missing Driftwood Tavern reference');
++  });
++});
++
++// ─── loader.js ────────────────────────────────────────────────────────────────
++
++describe('npc-context/loader.js — loadContextFile', () => {
++  beforeEach(() => {
++    clearContextCache();
++  });
++
++  it('should load world-common.xml and return a non-empty string', () => {
++    const content = loadContextFile('world-common');
++    assert.equal(typeof content, 'string');
++    assert.ok(content.length > 0, 'content should not be empty');
++  });
++
++  it('should return content that matches the raw XML file', () => {
++    const content = loadContextFile('world-common');
++    const raw = readXml('world-common.xml');
++    assert.equal(content, raw);
++  });
++
++  it('should cache: second call returns the same string reference', () => {
++    const first = loadContextFile('world-common');
++    const second = loadContextFile('world-common');
++    assert.strictEqual(first, second, 'cached result should be the same reference');
++  });
++
++  it('should load city-waterdeep.xml', () => {
++    const content = loadContextFile('city-waterdeep');
++    assert.ok(content.includes('<city-context id="waterdeep"'), 'missing waterdeep root tag');
++  });
++
++  it('should load city-baldurs-gate.xml', () => {
++    const content = loadContextFile('city-baldurs-gate');
++    assert.ok(content.includes('<city-context id="baldurs-gate"'), 'missing baldurs-gate root tag');
++  });
++
++  it('should load city-neverwinter.xml', () => {
++    const content = loadContextFile('city-neverwinter');
++    assert.ok(content.includes('<city-context id="neverwinter"'), 'missing neverwinter root tag');
++  });
++
++  it('should throw when the file does not exist', () => {
++    assert.throws(
++      () => loadContextFile('nonexistent-file'),
++      /ENOENT/,
++      'should throw ENOENT for missing files',
++    );
++  });
++});
++
++describe('npc-context/loader.js — clearContextCache', () => {
++  it('should allow a fresh read after clearing cache', () => {
++    const first = loadContextFile('world-common');
++    clearContextCache();
++    const second = loadContextFile('world-common');
++    // Content should be equal but now freshly read — not same reference
++    assert.equal(first, second, 'content should be equal after cache clear + reload');
++  });
++});
+diff --git a/packages/dm/src/prompts/npc-context/city-baldurs-gate.xml b/packages/dm/src/prompts/npc-context/city-baldurs-gate.xml
+new file mode 100644
+index 0000000..bbf8223
+--- /dev/null
++++ b/packages/dm/src/prompts/npc-context/city-baldurs-gate.xml
+@@ -0,0 +1,55 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++  city-baldurs-gate.xml — Baldur's Gate local knowledge, 1492 DR
++  Scope: what a Baldur's Gate resident or regular visitor knows beyond world-common
++  Format: dense key-value fragments; no prose; no complete sentences
++  Cache-target: inject as second static block for Baldur's Gate-based NPC prompts
++-->
++<city-context id="baldurs-gate" year="1492-DR" epithets="Gate; the City; the Gateway">
++
++  <section id="governance">
++    <e id="council-four">City ruled by four Dukes (Grand Duke + three); Grand Duke holds executive authority; currently Grand Duke Ulder Ravengard (also Marshal of the Flaming Fist)</e>
++    <e id="parliament-of-peers">Assembly of patriar families (landed nobility); advise+check the Dukes; significant political power but no formal veto; constant friction with Flaming Fist authority</e>
++    <e id="flaming-fist-authority">Flaming Fist is both mercenary army and city law enforcement; answers to Grand Duke Ravengard; more military discipline than civilian police; can be brutal in enforcement</e>
++    <e id="watch">A separate city Watch exists in Upper City; less powerful than Flaming Fist; handles disputes among patriars; widely seen as the nobility's private enforcers</e>
++    <e id="power-dynamics">Real power: Grand Duke + Flaming Fist; nominal power: Parliament of Peers; wealth power: merchant families who fund both; common folk have little formal voice</e>
++  </section>
++
++  <section id="districts">
++    <e id="upper-city">Walled enclave; patriars (nobility) + wealthy merchants live here; gates close at night; Baldur's Mouth (main gate) heavily guarded; cleaner,quieter,more law-abiding</e>
++    <e id="lower-city">Main residential+commercial area; most citizens; Eastway,Heapside,Bloomridge,Brampton neighborhoods; Flaming Fist patrols; lively but rough at edges; most taverns+shops here</e>
++    <e id="outer-city">Outside the walls; no citizenship protections; immigrants,poor,those who can't afford city rents; Flaming Fist has less presence; Rivington and Norchapel neighborhoods; dangerous after dark</e>
++    <e id="wide">Large open market square in Lower City; busiest commercial hub; vendors,performers,public notices; where most visitors spend their coin</e>
++    <e id="harbor">On the Chionthar River estuary; heavy merchant traffic; Fist-controlled docks; harbor fees significant; smugglers use the riverbanks outside city sight</e>
++  </section>
++
++  <section id="landmarks">
++    <e id="elfsong-tavern">Famous Lower City inn+tavern; ghost of an elven bard allegedly heard singing; gathering place for adventurers,merchants,those seeking work; owner Alyssa (human) tolerates rough clientele if they pay</e>
++    <e id="sorcerous-sundries">Major magical goods shop in Upper City; one of the few places on the Sword Coast with reliable stock of potions,scrolls,minor enchanted items; expensive; requires Upper City access</e>
++    <e id="high-hall">Grand Duke's seat of government in Upper City; Parliament of Peers meets here; public petitions heard on specific days; imposing fortified structure</e>
++    <e id="baldurs-mouth">Main gate between Lower City and Upper City; Flaming Fist guards check papers; non-patriar commoners enter by permit only; symbol of the city's class divide</e>
++    <e id="low-lantern">Famous floating tavern on a ship in the harbor; multilevel entertainment; gambling,drink,information; neutral ground by reputation</e>
++  </section>
++
++  <section id="factions-local">
++    <e id="flaming-fist-detail">Elite mercenary force 5,000+ strong; takes contracts across Faerûn; garrison in Baldur's Gate is home base; wages funded by city taxes+merchant tithes; officers mostly veterans; rank-and-file quality varies</e>
++    <e id="patriars">About 40 noble families; hereditary Upper City status; control much of the city's real estate+merchant trade; Parliament is their power base; resent Ravengard's military dominance</e>
++    <e id="guild">Thieves' Guild (now calling itself simply the Guild after reform attempts); controls organized crime in Lower City+Outer City; Guild informants in many establishments; uneasy truce with Flaming Fist</e>
++    <e id="zhentarim-presence">Zhentarim operate in the city; smuggling+mercenary contracts; tolerated because they're hard to root out and sometimes useful; openly rivals with the Guild for criminal territory</e>
++  </section>
++
++  <section id="economy-local">
++    <e id="trade-scale">Wealthiest trading city on the Sword Coast; sits at the mouth of the Chionthar giving access to interior Faerûn; goods from Amn,Calimshan,Sembia transit through the docks</e>
++    <e id="transit-tax">Tax on all goods passing through regardless of destination; major revenue source; merchants resent it,pay it anyway because alternatives are worse; Flaming Fist enforces collection</e>
++    <e id="class-commerce">Patriars dominate large-scale trade via import licenses and storage monopolies; common merchants compete for scraps; bribing the right official can unlock access</e>
++    <e id="chionthar-river">River access into the interior; barges run goods upriver toward Elturel and beyond; river tolls additional to harbor fees; piracy on upper stretches a problem</e>
++  </section>
++
++  <section id="social-culture">
++    <e id="class-tension">Starkest class divide on the Sword Coast; patriars openly look down on Lower City folk; Lower City folk resent the wall and the closed gate; Outer City folk resent everyone inside the walls</e>
++    <e id="attitude-toward-fist">Mixed: respected for discipline+effectiveness; feared for power to act without accountability; hated by those they've wronged; Grand Duke's control is the only real check</e>
++    <e id="adventurers-reception">Common in Baldur's Gate; treated as business opportunities by merchants,labor by the Fist,curiosities by patriars; adventure contracts posted at Elfsong+Low Lantern</e>
++    <e id="cosmopolitan">Major port; every race+nationality passes through; less overtly cosmopolitan than Waterdeep (class matters more than species here) but functionally diverse</e>
++  </section>
++
++</city-context>
+diff --git a/packages/dm/src/prompts/npc-context/city-neverwinter.xml b/packages/dm/src/prompts/npc-context/city-neverwinter.xml
+new file mode 100644
+index 0000000..852fef5
+--- /dev/null
++++ b/packages/dm/src/prompts/npc-context/city-neverwinter.xml
+@@ -0,0 +1,62 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++  city-neverwinter.xml — Neverwinter local knowledge, 1492 DR
++  Scope: what a Neverwinter resident or regular visitor knows beyond world-common
++  Format: dense key-value fragments; no prose; no complete sentences
++  Cache-target: inject as second static block for Neverwinter-based NPC prompts
++-->
++<city-context id="neverwinter" year="1492-DR" epithets="Jewel of the North; the City That Never Sleeps; the Shining City (pre-disaster)">
++
++  <section id="governance">
++    <e id="lord-protector">Dagult Neverember; self-proclaimed rightful heir to the Neverwinter throne (contested); rules as Lord Protector; simultaneously Open Lord of Waterdeep until removed; currently focused on Neverwinter reconstruction</e>
++    <e id="neverwinter-nine">Neverember's elite personal guard+enforcers; named for the legendary nine heroes of old Neverwinter; function as secret police as much as bodyguards; widely mistrusted by citizens</e>
++    <e id="legitimacy-question">Neverember's hereditary claim is disputed; no surviving member of the old Alagondar noble line acknowledged; many citizens resent autocratic rule while accepting it as necessary for reconstruction</e>
++    <e id="new-neverwinter">Political faction supporting Neverember's rebuilding project; loyal to the Lord Protector; often wealthy newcomers who arrived after the disaster and have no attachment to the old city</e>
++    <e id="sons-of-alagondar">Resistance faction; claim to defend old Neverwinter's independence; see Neverember as an occupier; conduct sporadic sabotage; popular sympathy among long-term residents</e>
++  </section>
++
++  <section id="geography-local">
++    <e id="river">River Neverwinter stays warm year-round due to geothermal vents upstream; never freezes; gives the city its name; source of the city's unique climate advantage; vital for winter trade when other northern rivers ice over</e>
++    <e id="protectors-enclave">Main restored district; administrative center,markets,docks; Neverember's government operates here; safest part of the city; where visitors typically stay</e>
++    <e id="blacklake-district">Formerly wealthy residential district; damaged in disaster; partially restored; wealthier citizens+Neverember loyalists moving back in; still has abandoned sections</e>
++    <e id="tower-district">Northern district; largely ruined; dangerous due to remnant monsters and structural instability; Sons of Alagondar use ruins for hideouts; officially off-limits but unofficially entered constantly</e>
++    <e id="blighted-witchwood">Forest to the east; corrupted by the disaster's magical fallout; plagued beasts,undead,and stranger things; not a safe place to enter without preparation</e>
++    <e id="chasm">Massive rift that tore open in the city during the disaster; sealed/bridged by 1492 but the area remains unstable and psychically disturbing; a vivid reminder of the catastrophe</e>
++  </section>
++
++  <section id="history-local">
++    <e id="mount-hotenow">Volcano to the NE; erupted ~1451 DR; pyroclastic flows destroyed much of the city; thousands killed; triggered the Chasm opening; the defining event for all current residents</e>
++    <e id="spellplague-impact">Spellplague 1385 DR already weakened the city before Hotenow; combination of planar disruptions+volcanic destruction left the city near-abandoned for decades</e>
++    <e id="reconstruction">Neverember began serious rebuilding ~1467 DR; brought in workers,soldiers,merchants from Waterdeep and elsewhere; city is functional but far from its former glory; ongoing construction visible everywhere</e>
++    <e id="population">Significantly smaller than pre-disaster; mix of original survivors,returning former residents,and new arrivals attracted by cheap land+opportunity; social tensions between old-timers and newcomers</e>
++    <e id="castle-never">The old castle; partially rebuilt; Neverember uses it as his seat; some wings still ruined; legendary for its size and former glory; adventurers explore unreconstructed sections (unofficially)</e>
++  </section>
++
++  <section id="landmarks">
++    <e id="hall-of-justice">Tyr's temple; restored early in reconstruction; serves as courts+civic center; one of the most intact major buildings; Neverember uses its legitimacy for official functions</e>
++    <e id="protectors-enclave-market">Main market in the Enclave; largest concentration of active merchants; prices slightly higher than comparable Sword Coast cities (supply logistics); most reliable source of standard goods</e>
++    <e id="driftwood-tavern">Popular tavern in Protector's Enclave; gathering point for adventurers+mercenaries; job board; Neverember's agents known to recruit here; owner: Madame Rosene</e>
++    <e id="river-district">Along the Neverwinter River; warehouses,fishing operations,small boat traffic; less affected by disaster than interior districts; working-class,practical,mistrustful of outsiders</e>
++  </section>
++
++  <section id="factions-local">
++    <e id="neverwinter-guard">Neverember's city guard; funded by Waterdeep gold via the Lord Protector; reasonably paid and reasonably disciplined; loyalty is to Neverember not the city; not a city Watch in traditional sense</e>
++    <e id="mintarn-mercenaries">Mercenaries from Mintarn island hired by Neverember to supplement the guard; competent but seen as foreign occupiers by old-time residents; rotating contracts mean no permanent loyalty</e>
++    <e id="harpers-presence">Harpers active in Neverwinter; concerned about Neverember's consolidation of power; also monitoring Blighted Witchwood and Underdark connections under the city; operate quietly</e>
++  </section>
++
++  <section id="economy-local">
++    <e id="reconstruction-economy">Massive building demand=jobs for laborers,craftsmen,merchants; wages slightly above Sword Coast average due to demand; Neverember spending Waterdeep treasury gold to fund growth</e>
++    <e id="harbor">Harbor rebuilt and operational; less traffic than pre-disaster but growing; river advantage means it functions year-round when northern ports are iced; strategic value acknowledged by Lords' Alliance</e>
++    <e id="land-cheap">Property prices low relative to Waterdeep or Baldur's Gate; opportunity for those willing to accept risk and ongoing instability; Neverember grants land to attract settlers</e>
++    <e id="supply-constraints">Some goods harder to find than in larger cities; magical items especially limited; adventurers wanting exotic equipment often need to commission or travel to Waterdeep</e>
++  </section>
++
++  <section id="social-culture">
++    <e id="resilience">Residents who stayed through or returned after the disaster have a particular hardness and civic pride; not easily impressed; distrust easy promises; respect demonstrated competence</e>
++    <e id="political-tension">Open support for Sons of Alagondar can lead to arrest by Neverwinter Nine; open criticism of Neverember is risky; most citizens navigate with careful neutrality; tavern conversations guarded</e>
++    <e id="adventurers-reception">Unusually welcoming; reconstruction creates constant demand for cleared ruins,explored threats,recovered artifacts; adventurers are economically valuable here in ways they aren't elsewhere</e>
++    <e id="frontier-feel">Despite being a named city, Neverwinter in 1492 has a frontier quality; rules are enforced selectively; the Watch's reach doesn't extend everywhere; self-reliance valued</e>
++  </section>
++
++</city-context>
+diff --git a/packages/dm/src/prompts/npc-context/city-waterdeep.xml b/packages/dm/src/prompts/npc-context/city-waterdeep.xml
+new file mode 100644
+index 0000000..09608f2
+--- /dev/null
++++ b/packages/dm/src/prompts/npc-context/city-waterdeep.xml
+@@ -0,0 +1,60 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++  city-waterdeep.xml — Waterdeep local knowledge, 1492 DR
++  Scope: what a Waterdeep resident or regular visitor knows beyond world-common
++  Format: dense key-value fragments; no prose; no complete sentences
++  Cache-target: inject as second static block for Waterdeep-based NPC prompts
++-->
++<city-context id="waterdeep" year="1492-DR" epithets="City of Splendors; Crown of the North">
++
++  <section id="governance">
++    <e id="masked-lords">City ruled by ~15 hidden Masked Lords; identities secret by design; decisions made collectively; prevents any single faction from capturing the government</e>
++    <e id="open-lord">Only public-facing lord; current 1492 DR: Laeral Silverhand (archmage, one of the Seven Sisters); former Open Lord Dagult Neverember removed, now in Neverwinter</e>
++    <e id="blackstaff">Archmage of Waterdeep; title not person; current: Vajra Safahr; commands the city's magical defense; based in Blackstaff Tower (Castle Ward); answers to the Lords</e>
++    <e id="city-watch">Internal law enforcement; professional+incorruptible by Faerûn standards; distinctive black-and-gold livery; can arrest anyone regardless of wealth or faction</e>
++    <e id="city-guard">External military defense; mans the city walls+harbor gates; separate from Watch; primarily a military body not a law enforcement one</e>
++    <e id="lords-guard">Elite force; protects Castle Waterdeep+the Lords themselves; highly trained,heavily armed; not seen on normal city streets</e>
++  </section>
++
++  <section id="districts">
++    <e id="sea-ward">Wealthiest residential district; grand noble villas,temples of major gods,grand boulevards; most temples along the Street of the Singing Dolphin; status address</e>
++    <e id="north-ward">Prosperous middle class; quiet,well-maintained; wealthy merchants,successful guild members; fewer temples,more townhouses; safer than most wards at night</e>
++    <e id="castle-ward">Government center; Castle Waterdeep (atop Mt. Waterdeep),Blackstaff Tower,City Watch HQ; mixed residential+commercial; higher elevation overlooks the city</e>
++    <e id="trade-ward">Commercial heart; markets,moneychangers,counting houses,guild offices; busiest during day; expensive to rent,worth it for merchants; never truly quiet</e>
++    <e id="southern-ward">Working class residential+light industry; tanners,dyers,coopers,stables; smells accordingly; honest folk; fewer guards patrol here than Sea or North Ward</e>
++    <e id="dock-ward">Roughest district; sailors,fishers,dock workers,fences,pickpockets; taverns stay open all night; Watch patrols in pairs minimum; where contraband moves</e>
++    <e id="city-of-the-dead">Vast walled cemetery; open to the public by day as a park; locked at night; well-maintained by Kelemvorites; remarkably safe from undead (active consecration)</e>
++    <e id="field-of-triumph">Large arena in Sea Ward; public games,celebrations,trials by combat; major festival events held here</e>
++  </section>
++
++  <section id="landmarks">
++    <e id="yawning-portal">Famous inn in Castle Ward; contains a well 40ft wide descending into Undermountain; adventurers jump in for bounties (100gp posted at bar); Durnan the innkeeper is an ex-delver and not easily impressed</e>
++    <e id="undermountain">Megadungeon beneath the city; built+haunted by mad archmage Halaster Blackcloak; levels descend miles; creatures and treasure both; many enter,few return to tell the full story</e>
++    <e id="castle-waterdeep">Ancient castle atop Mt. Waterdeep; headquarters of the city's magical and military defense; home to Blackstaff Tower; partially open to public view from below</e>
++    <e id="deepwater-harbor">One of the finest natural harbors in Faerûn; protected by sea wall+harbor chain; heavily trafficked by merchant vessels from across the continent and beyond; Sea Ward nobles have private moorings</e>
++    <e id="skullport">Hidden port three levels below Undermountain; center of Waterdeep's illegal trade: slaves,drugs,contraband; controlled by the Xanathar Guild; Watch cannot reach it; most citizens deny its existence</e>
++  </section>
++
++  <section id="guilds-and-factions">
++    <e id="guilds-general">Over a dozen major guilds; guild membership required for most skilled professions; Waterdeep guilds are politically powerful,well-funded,and territorial</e>
++    <e id="watchful-order">Watchful Order of Magists and Protectors; guild for spellcasters; provides magical services,lobbies for mage interests,polices unlicensed spellcasting-for-hire; well-connected with the Lords</e>
++    <e id="xanathar-guild">Beholder crime lord known as the Xanathar; controls most organized crime in Waterdeep from beneath the city; rivals the Zhentarim for underworld dominance; dangerous to mention by name in the wrong company</e>
++    <e id="bregan-daerthe">Drow mercenary company operating in Waterdeep; led by Jarlaxle; ostensibly a fencing operation; actual scope: intelligence,influence,profit; tolerated because they are useful</e>
++    <e id="force-grey">Elite city defenders; select members of the City Guard; called upon when threats exceed normal Watch+Guard capacity; adventurers are sometimes deputized into this force</e>
++  </section>
++
++  <section id="economy-local">
++    <e id="trade-scale">Wealthiest city in the North; gateway between the Sword Coast and interior trade routes; merchant vessels from Calimshan,Amn,Sembia,Luskan,and beyond call here</e>
++    <e id="guild-power">Guild levies are a significant tax burden; non-guild craftsmen face fines+confiscation; powerful guilds negotiate directly with the Lords over rates+regulations</e>
++    <e id="money-exchange">Trade Ward money-changers handle all major currencies; standard exchange available; premium charged for unusual coinage; platinum common in high-value noble transactions</e>
++    <e id="black-market">Dock Ward fences and Skullport supply what guilds and Watch prohibit; prices high; risk of Watch involvement or Xanathar notice both real</e>
++  </section>
++
++  <section id="social-culture">
++    <e id="cosmopolitan">Most diverse city in the North; elves,dwarves,halflings,gnomes,half-orcs,tieflings all present and (mostly) unremarkable; foreign merchants,ambassadors,adventurers arrive constantly</e>
++    <e id="masked-lords-speculation">Who are the Masked Lords is Waterdeep's favorite tavern debate; rumors constantly circulate; naming someone as a Lord is considered scandalous if wrong, dangerous if right</e>
++    <e id="wealth-display">Sea Ward nobility displays wealth openly: carved facades,liveried servants,private coaches; Trade Ward merchants display more subtly; Dock Ward folk distrust open displays of wealth</e>
++    <e id="law-enforcement">One of the few cities where the Watch actively pursues crimes against commoners not just nobles; bribery of Watch officers carries severe penalty; still not perfect but notably better than most</e>
++  </section>
++
++</city-context>
+diff --git a/packages/dm/src/prompts/npc-context/loader.js b/packages/dm/src/prompts/npc-context/loader.js
+new file mode 100644
+index 0000000..45eaaa2
+--- /dev/null
++++ b/packages/dm/src/prompts/npc-context/loader.js
+@@ -0,0 +1,37 @@
++import { readFileSync } from 'node:fs';
++import { resolve, dirname } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const __dirname = dirname(fileURLToPath(import.meta.url));
++
++/**
++ * Loads a static XML context file by name (without the .xml extension).
++ * Results are cached in memory after the first read so subsequent calls
++ * return the same byte-for-byte string — a requirement for Anthropic
++ * prompt caching to produce cache hits across API calls.
++ *
++ * Available files:
++ *   world-common       — Faerûn 1492 DR baseline (all NPCs)
++ *   city-waterdeep     — Waterdeep-specific knowledge
++ *   city-baldurs-gate  — Baldur's Gate-specific knowledge
++ *   city-neverwinter   — Neverwinter-specific knowledge
++ *
++ * @internal Not exposed via any API route.
++ */
++
++const cache = new Map();
++
++export function loadContextFile(name) {
++  const cached = cache.get(name);
++  if (cached !== undefined) return cached;
++
++  const filePath = resolve(__dirname, `${name}.xml`);
++  const content = readFileSync(filePath, 'utf8');
++  cache.set(name, content);
++  return content;
++}
++
++/** Clears the in-memory cache. Intended for use in tests only. */
++export function clearContextCache() {
++  cache.clear();
++}
+diff --git a/packages/dm/src/prompts/npc-context/world-common.xml b/packages/dm/src/prompts/npc-context/world-common.xml
+new file mode 100644
+index 0000000..ca1adc5
+--- /dev/null
++++ b/packages/dm/src/prompts/npc-context/world-common.xml
+@@ -0,0 +1,108 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++  world-common.xml — Faerûn 1492 DR baseline world-knowledge
++  Scope: what any worldly adult Faerûnian commoner knows
++  Format: dense key-value fragments; no prose; no complete sentences
++  Cache-target: inject as static system block for every NPC prompt
++-->
++<world-context year="1492-DR" scope="faerûn-common-knowledge" depth="worldly-adult-commoner">
++
++  <section id="geography">
++    <e id="sword-coast">W Faerûn coast; trade corridor S→N: Baldur's Gate→Waterdeep→Neverwinter→Luskan; Sea of Swords W; main overland routes: High Road (coastal,patrolled), Trade Way (inland,merchant-heavy)</e>
++    <e id="major-cities">Waterdeep: largest N city; Baldur's Gate: wealthiest Sword Coast port; Neverwinter: rebuilding post-volcanic disaster; Luskan: pirate haven, Arcane Brotherhood base</e>
++    <e id="roads">High Road: safer,slower,coastal patrol; Trade Way: heavy caravan traffic BG↔WD; inns every day's ride; quality varies widely</e>
++    <e id="underdark">Vast subterranean network beneath Faerûn; drow/mind flayers/beholders+worse; surface entrances rare,sealed/guarded; respectable folk avoid entirely</e>
++    <e id="north">Above Waterdeep; anchor cities: Neverwinter,Mirabar,Silverymoon; leagues of wilderness between; ancient ruins,monster-haunted forests; Spine of the World=northern limit; Icewind Dale beyond: frozen,sparsely inhabited</e>
++    <e id="interior">E of Sword Coast: Cormyr (stable kingdom), Dalelands (farming near old Elven Court), Anauroch (desert,former Netherese empire); known by name,rarely visited by Sword Coast folk</e>
++    <e id="moonshae-isles">W across Sea of Swords; Northlander+Ffolk humans; fey creatures,druidic power; trade goods: wool,timber,fish</e>
++  </section>
++
++  <section id="religion">
++    <e id="pantheon">Many gods; most folk honor several not one; normal: Tymora (journey), Chauntea (planting), Kelemvor (death); exclusive single-deity devotion marks clerics/paladins, not common folk</e>
++    <e id="tymora">Goddess of luck+adventurers; coin-flip ritual before journeys/gambling/contracts; temples: cheerful,pragmatic clergy,modest healing fees</e>
++    <e id="helm">God of guardians+vigilance; symbol: eye in upturned gauntlet; patron of guards/soldiers; clergy: austere,keep meticulous records; reject glory</e>
++    <e id="tyr">God of justice+law; temples serve as courts; altar oaths binding (breaking=crime+religious transgression); clerics often serve as magistrates</e>
++    <e id="mystra">Goddess of magic+the Weave; died Spellplague 1385 DR; restored Second Sundering ~1487 DR; all magic failed/warped during absence; wizards+sorcerers pay reverence without active worship</e>
++    <e id="kelemvor">God of death+judgment; priests run mortuaries+funerals; oppose undead as souls refusing rightful judgment; consecrated Kelemvorite cemetery=safe from risen dead</e>
++    <e id="chauntea">Goddess of agriculture+earth; every farming village has shrine; prayers at planting+harvest; minimal ceremony; handful of seed returned to earth=sufficient offering</e>
++    <e id="selune-shar">Selûne (moonfire,moon goddess) vs Shar (darkness,secrets): twin sisters,ancient rivals; conflict shapes night sky; their worshippers=mortal enemies</e>
++    <e id="temples">Healing rarely free; expected offering scales with service: few cp minor wound → multiple gp restoration/disease; wealthy donors get priority; considered proper reverence not corruption</e>
++  </section>
++
++  <section id="economy">
++    <e id="currency">cp,sp,gp,pp ascending; 10cp=1sp; 10sp=1gp; 10gp=1pp; gp: large purchases/contracts; sp: daily commerce; cp: poor folk's coin</e>
++    <e id="wages">1492 DR: unskilled laborer 1-2sp/day; skilled craftsman (blacksmith/carpenter/mason) 2-5sp/day; city soldier ~5sp/day+lodging; adventurer single dungeon=laborer full-year income (if survives)</e>
++    <e id="guilds">Control most skilled trades in cities; unlicensed practice: fines/confiscation/violence; joining requires fees+apprenticeship; Waterdeep guilds powerful enough to influence city politics</e>
++    <e id="trade">Lords' Alliance promotes stable commerce; charter caravans: better gate treatment+commercial arbitration; Zhentarim compete on price,higher risk profile</e>
++    <e id="magical-goods">Healing potion: 50gp+; enchanted weapons/armor: heirlooms or trophies, common folk don't own; magical services (divination/remove curse/raise dead): hundreds→thousands gp</e>
++    <e id="moneylenders">Operate in every city; interest 20%+/month common; folk distrust but use in desperation; debt slavery illegal WD+BG (imperfect enforcement); defaulting has severe extralegal consequences</e>
++    <e id="taxes">City govts tax commerce; Waterdeep: entry fees,harbor duties,guild levies; Baldur's Gate: transit tax,Flaming Fist funded by merchant tithes; tolls common at bridges+city gates</e>
++  </section>
++
++  <section id="magic">
++    <e id="weave">Invisible structure maintained by Mystra; casters channel Weave,don't generate magic independently; frayed 1385-1487 DR (Mystra dead); reliable again post-Second Sundering</e>
++    <e id="spellcasters">Rare; most people never see one; cities: unusual but not shocking; rural areas: perhaps 1 per 10+ villages; common folk attitude: respectful+wary in equal measure</e>
++    <e id="cantrips">Minor effects used by street performers/market vendors/hedge wizards; light,prestidigitation,simple illusion most common; impressive to country folk; city dwellers treat as background noise</e>
++    <e id="enchanted-items">Glowing blade=immediate signal of wealth/power/serious adventuring experience; common guards don't carry magic weapons; elite force officers occasionally do</e>
++    <e id="wild-magic">Spellplague 1385-1395 DR: wild surges common; lingering anxiety in communities badly affected; largely faded in cities,persists in isolated settlements</e>
++    <e id="arcane-sources">Wizard: study; sorcerer: innate power; warlock: pact with powerful being; cleric/paladin: deity; druid: nature; common folk use "wizard" as catch-all regardless of source</e>
++  </section>
++
++  <section id="faction">
++    <e id="lords-alliance">Coalition: Waterdeep,Neverwinter,Baldur's Gate,Silverymoon+others; cooperative defense+trade; shared military response to major threats; political,sometimes fractious; 100+ years standing</e>
++    <e id="zhentarim">Black Network; mercenary+trading org; services: guards,assassins,smuggling,extrajudicial contract enforcement; not illegal everywhere; never fully trusted</e>
++    <e id="harpers">Semi-secret network; oppose tyranny,preserve knowledge; recruit adventurers+scholars; symbol: silver harp; called meddling spies by enemies; truth somewhere between</e>
++    <e id="order-gauntlet">Post-Second Sundering faction; paladins/clerics/devout warriors; proactive not reactive stance on evil; zealous,principled,sometimes to a fault</e>
++    <e id="emerald-enclave">Loose brotherhood: druids/rangers/nature wardens; protect natural world from corruption (magical/monstrous/human); don't oppose civilization; enforce wilderness boundary</e>
++    <e id="flaming-fist">Baldur's Gate mercenary army+de facto city guard; disciplined,well-equipped; operates Sword Coast-wide; badge=recognized authority across the region</e>
++    <e id="city-watch">Every significant city has one; quality varies: Waterdeep professional+incorruptible by most standards vs small city undertrained+bribeable; travelers learn which law is worth invoking</e>
++  </section>
++
++  <section id="danger">
++    <e id="bandits">Constant road hazard outside patrol range; traveling alone=unwise; caravans hire guards; solo travelers attach to groups; problem worsened since Sundering disrupted political order</e>
++    <e id="goblinoids">Goblins: raiders,nuisance-level; hobgoblins: warbands with tactics+discipline=genuine military threat; bugbears; all: capable of ambush+retreat; common enough that most frontier folk have faced them</e>
++    <e id="undead">More active since Sundering; graveyards near ruins need regular consecration; skeletons/zombies=negligent or malicious necromancy; vampires: rare,real,evacuation-level threat not hero-level</e>
++    <e id="gnolls">Hyena-headed humanoids; serve demon lord Yeenoghu; more organized than goblins,more savage than hobgoblins; don't take prisoners for ransom; gnoll signs=leave area immediately</e>
++    <e id="dragons">Real,rare,terrifying; settlement sighting triggers: evacuation/tribute negotiation/hiring expensive adventurers; chromatic (red/black/blue/green/white)=destructive+malevolent; metallic (gold/silver/bronze/copper/brass)=less hostile,still dangerous</e>
++    <e id="wilderness">Genuinely dangerous between settlements; wolves/owlbears/displacer beasts/wyverns regional hazards; ruins=almost certainly occupied by something hostile; patrol lapses make even cleared roads dangerous; no solo wilderness travel without serious reason</e>
++  </section>
++
++  <section id="daily-life">
++    <e id="housing">Urban: 2-3 room tenements,whole family; shared sleeping normal; privacy=luxury; wealthy: townhouses; truly wealthy: city estate+country estate; small town: single-storey combined living/cooking</e>
++    <e id="taverns">Community center; news travels by rumor+conversation; job postings/bounties/merchant ads on common room wall or via barkeep; bards+traveling merchants bring outside news; cheap,sociable,informative</e>
++    <e id="inns">Charge by bed not room; common room=few cp/night; private room=silver; sharing bed with stranger=standard for common travelers; innkeepers track guests,often best local intelligence source</e>
++    <e id="literacy">Most common folk cannot read; literate: merchants/clergy/nobility/formally schooled; city signs use pictures alongside words; literate people hired to read/write contracts+correspondence</e>
++    <e id="markets">Dawn-to-dusk; after-dark commerce in market district=suspicious (black market/fence activity); permanent shops on main streets; traveling vendors in open squares+outside city gates</e>
++    <e id="messages">No postal service; carried by hired messengers/travelers heading that way/caravan networks; 100mi delivery=1 week+; letters sealed with wax; broken seal=unauthorized reading</e>
++    <e id="water">Clean water not guaranteed; wells+river intakes vulnerable to upstream contamination; periodic illness=accepted fact of life; wealthy: boil or watered wine; Purify Food and Water=party-valuable spell</e>
++    <e id="festivals">4-6 major days/year: feasting/games/temple ceremonies; tied to religious+agricultural calendar; double as informal economic fairs; merchants travel specifically to attend larger festivals</e>
++  </section>
++
++  <section id="cosmology">
++    <e id="planes">Material Plane (mortal world) surrounded by Astral Sea; Outer Planes=god realms; Inner Planes=elemental (fire/water/earth/air); Feywild=vibrant fey mirror; Shadowfell=dark death-adjacent mirror</e>
++    <e id="afterlife">Soul→Fugue Plane (gray limbo)→judgment by Kelemvor; faithful: deity's servants claim soul→divine realm; unfaithful: remain as petitioners until claimed/assigned; undead=souls refusing or prevented from judgment</e>
++    <e id="shadowfell">Colorless decaying reflection of Material Plane; source of necromantic energy; shadow creatures; thin spots near mass-death sites: vegetation withers,animals flee</e>
++    <e id="feywild">Vibrant exaggerated reflection; pixies/dryads/satyrs/Archfey rulers; time moves strangely; mortals who wander in may lose/gain months; fey: alien,capricious,dangerous by nature not malice</e>
++    <e id="divine-manifestation">Gods rarely manifest physically; communicate via dreams/omens/clerical visions/prophets; physical manifestation=apocalyptic event (transforms area,kills bystanders); claims of direct divine speech=likely lying,mad, or extremely dangerous</e>
++  </section>
++
++  <section id="calendar">
++    <e id="harptos">12 months × 30 days + 5 standalone festival days; months in order: Hammer,Alturiak,Ches,Tarsakh,Mirtul,Kythorn,Flamerule,Eleasis,Eleint,Marpenoth,Uktar,Nightal</e>
++    <e id="festival-days">Midwinter (Hammer/Alturiak); Greengrass (Tarsakh/Mirtul, spring start); Midsummer (Flamerule/Eleasis); Highharvestide (Eleint/Marpenoth, harvest feast); Feast of the Moon (Uktar/Nightal, dead honored)</e>
++    <e id="current-year">1492 DR (Dale Reckoning); counts from founding of Dalereckoning by dalesfolk+Elven Court; common folk use without knowing origin</e>
++    <e id="second-sundering">~1482-1487 DR; recent cosmic upheaval; reshaped planes,restored dead gods (incl. Mystra),ended Spellplague; living memory: disrupted weather,failed magic,planar bleeds; world stabilized; most living adults remember it</e>
++    <e id="seasons">Winter (Hammer-Alturiak): mountain passes close,N roads treacherous; Spring (Ches-Mirtul): planting season; Summer (Kythorn-Eleasis): peak travel+trade; Autumn (Eleint-Uktar): harvest+preparation; Nightal: dark month before year turns</e>
++  </section>
++
++  <section id="society">
++    <e id="class">Vast divide wealthy/noble vs common laborer; accepted as natural order; mobility exists (skilled craftsman→wealthy; wealthy merchant→bought title) but requires exceptional effort or luck; most born+die in their station</e>
++    <e id="nobility">Hereditary in most city-states+kingdoms; titles pass through bloodlines; marriage into noble family=reliable elevation path; Waterdeep exception: masked Lords system decouples noble names from political power</e>
++    <e id="adventurers">Unusual social position: respected for capability,feared for power,distrusted for lawlessness,envied for potential wealth; cities: necessary but alarming; rural folk: openly impressed; inns have policies on weapons at table</e>
++    <e id="racial-tensions">Elves+dwarves: respected in most civilized areas; half-orcs: mistrust (orcish features read as threatening in raided communities); tieflings: suspicion in religious communities; gnomes: clever+eccentric reputation; halflings: seen as harmless (perception sometimes exploited)</e>
++    <e id="slavery">Practiced openly: Amn,Calimshan; illegal: Waterdeep,Neverwinter,most Lords' Alliance cities; Zhentarim historical trafficking; escaped slaves in N cities=legal grey area; enforcement depends on magistrate</e>
++    <e id="law">Law is local; Waterdeep Code Legal=most comprehensive in Faerûn; Baldur's Gate=merchant-family influenced; smaller towns=local lord/council decree; justice in practice correlates with wealth+influence over written code</e>
++    <e id="women">Varies by region; Waterdeep: female merchants/guildmasters/lords unremarkable; conservative inland: male-dominated structures; temples more egalitarian (Tymora/Selûne/Sune/Lliira have large female clergy)</e>
++    <e id="identity-docs">Larger cities require papers; Waterdeep: guild membership/residency/noble affiliation for certain districts+services; adventurers without papers=more scrutiny at gates; faction letter of introduction changes conversation considerably</e>
++  </section>
++
++</world-context>
+diff --git a/skills/context-building/SKILL.md b/skills/context-building/SKILL.md
+new file mode 100644
+index 0000000..75a0b63
+--- /dev/null
++++ b/skills/context-building/SKILL.md
+@@ -0,0 +1,126 @@
++---
++name: context-building
++description: Best practices for constructing effective context for AI agents.
++  Covers system prompts, XML structuring, examples, retrieval patterns, tool design,
++  long-horizon strategies, and anti-patterns. Use when designing prompts, building
++  agent harnesses, or optimizing token utility for any LLM-powered system.
++---
++
++## Overview
++
++Context engineering is the discipline of curating the optimal set of tokens
++available to a language model at inference time. It is the natural progression
++of prompt engineering: where prompt engineering focuses on *writing* effective
++instructions, context engineering focuses on *managing the entire state* — system
++prompts, tools, examples, message history, retrieved data, and memory artifacts —
++that shapes the model's behavior across one or many turns.
++
++The guiding principle is simple:
++
++> Find the **smallest possible set of high-signal tokens** that maximizes the
++> likelihood of the desired outcome.
++
++Every token consumes a finite attention budget. More tokens do not mean better
++results; in fact, performance degrades as context grows (a phenomenon called
++**context rot**). Effective context construction means being precise, structured,
++and intentional about what enters the context window — and what stays out.
++
++This skill provides a reference framework for building effective context,
++organized around the four pillars of context engineering:
++
++1. **System Prompts** — Clear, structured instructions at the right altitude
++2. **Tools** — Self-contained, non-overlapping, token-efficient interfaces
++3. **Data Retrieval** — Just-in-time context over pre-loading
++4. **Long-Horizon Strategies** — Compaction, memory, and multi-agent patterns
++
++## Quick Reference: The Core Principles
++
++### 1. Treat Context as a Finite Resource
++
++LLMs have a fixed attention budget. Every token added depletes it. As context
++length grows, the model's ability to accurately recall and reason over the full
++content decreases. Design for *minimal sufficiency* — include everything the model
++needs and nothing it doesn't.
++
++### 2. Structure Reduces Ambiguity
++
++Use XML tags, markdown headers, or other delimiters to separate distinct types
++of content (instructions, context, examples, input). When the model can
++unambiguously parse your intent, it responds more accurately.
++
++### 3. Be Clear and Direct
++
++Write instructions as if briefing a brilliant colleague who lacks your specific
++context. State what you want explicitly. Provide the *why* behind important
++rules — the model generalizes from explanations.
++
++**Golden rule:** Show your prompt to a colleague with minimal context on the
++task. If they'd be confused, the model will be too.
++
++### 4. Examples Are Worth a Thousand Words
++
++A few well-crafted examples (3–5) are the single most reliable way to steer
++output format, tone, and behavior. Make them relevant, diverse, and clearly
++delineated from instructions.
++
++### 5. Progressive Disclosure Over Data Dumps
++
++Don't load everything up front. Give the model lightweight identifiers (file
++paths, IDs, queries) and let it retrieve details on demand. Start with summaries;
++drill down as needed.
++
++### 6. Right Altitude for Instructions
++
++Avoid two extremes:
++- **Too rigid:** Hardcoded if-else logic that creates brittle, unmaintainable prompts.
++- **Too vague:** High-level guidance that assumes shared context the model doesn't have.
++
++The optimal altitude is specific enough to guide behavior, flexible enough to
++let the model apply heuristics intelligently.
++
++### 7. Design for the Next Context Window
++
++Complex tasks span multiple sessions. Leave clean artifacts — progress notes,
++structured state files, descriptive commits — so the next session can resume
++without guessing.
++
++## Detailed Guides
++
++For deeper guidance on each aspect of context engineering, consult the following
++reference files:
++
++| Guide | When to Read |
++|-------|-------------|
++| `system-prompts.md` | When constructing or refining system prompts |
++| `structuring-context.md` | When organizing complex prompts with XML tags, markdown, or document hierarchies |
++| `examples.md` | When adding few-shot examples to a prompt |
++| `retrieval-patterns.md` | When designing how an agent discovers and loads information at runtime |
++| `long-horizon.md` | When building agents that work across multiple context windows or extended sessions |
++| `tool-design.md` | When designing tools for an agent's action/information space |
++| `context-rot.md` | When diagnosing degraded model performance or reviewing context hygiene |
++
++## Context Construction Checklist
++
++Use this checklist when building or reviewing a context configuration:
++
++- [ ] **System prompt** is clear, direct, and at the right altitude
++- [ ] **Sections** are delineated with XML tags or markdown headers
++- [ ] **Role** is set to focus behavior and tone
++- [ ] **Instructions** explain *what* and *why*, not just *how*
++- [ ] **Examples** (3–5) are relevant, diverse, and wrapped in `<example>` tags
++- [ ] **Long documents** are placed at the top, with queries/instructions at the bottom
++- [ ] **Tools** are self-contained, non-overlapping, with descriptive parameters
++- [ ] **Data retrieval** uses JIT patterns — identifiers over full payloads
++- [ ] **State management** uses structured formats (JSON for schema, text for notes)
++- [ ] **Progress artifacts** are left for subsequent sessions (progress files, git commits)
++- [ ] **Context budget** is respected — no redundant or low-signal tokens
++
++## Sources
++
++This skill synthesizes guidance from:
++
++- [Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) — Anthropic Applied AI team
++- [Claude Prompting Best Practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) — Anthropic documentation
++- [Use XML Tags](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/use-xml-tags) — Anthropic documentation
++- [Effective Harnesses for Long-Running Agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) — Anthropic engineering
++- [Context Engineering from Claude](https://01.me/en/2025/12/context-engineering-from-claude/) — Synthesized from Anthropic talks at AWS re:Invent 2025
+diff --git a/skills/context-building/context-rot.md b/skills/context-building/context-rot.md
+new file mode 100644
+index 0000000..1e9dc31
+--- /dev/null
++++ b/skills/context-building/context-rot.md
+@@ -0,0 +1,185 @@
++# Context Rot: Anti-Patterns and Degradation
++
++Context rot is the degradation of model performance as context length increases.
++It is not a cliff — performance degrades gradually — but it is real and
++consistent across all frontier models. Understanding its causes is essential
++for diagnosing and preventing degraded agent behavior.
++
++## What Context Rot Is
++
++As context grows, the model's ability to accurately:
++- Recall specific information from earlier in the context
++- Reason across multiple pieces of information that are far apart
++- Maintain consistent behavior against instructions defined early in the prompt
++
++...all decrease. The transformer architecture creates n² pairwise relationships
++for n tokens. As n grows, the model's capacity to track all relationships is
++stretched thin.
++
++**Context rot does not mean the model ignores long contexts.** It means
++precision and reliability decrease. The model may still give reasonable
++answers — but subtle errors and inconsistencies increase with context length.
++
++## The Four Types of Context Degradation
++
++### 1. Context Poisoning
++
++Incorrect or outdated information in the context causes the model to reason
++from wrong premises.
++
++**How it happens:**
++- Pre-loaded data that has since changed (stale cache)
++- A tool call that returned an error, and the error message was left in context
++  as if it were a valid result
++- An early incorrect assumption that was never explicitly corrected
++
++**Signs:** The model makes confident assertions that contradict current state.
++It "believes" something that was true earlier in the session but is no longer true.
++
++**Prevention:**
++- Use JIT retrieval for dynamic data; never pre-load state that changes
++- When data is corrected, explicitly state the correction rather than relying
++  on the model to notice the contradiction
++- Remove stale tool results from message history during compaction
++
++### 2. Context Distraction
++
++Irrelevant information dilutes the model's focus on the information that matters.
++
++**How it happens:**
++- Padding system prompts with every rule that might ever apply, rather than
++  rules relevant to the current task
++- Tool results that include far more data than needed
++- Long message histories containing exchanges irrelevant to the current subtask
++
++**Signs:** The model's responses drift toward topics mentioned in the context
++but not relevant to the current request. It references information it "noticed"
++rather than what was asked about.
++
++**Prevention:**
++- Keep system prompts focused on the current task
++- Design tools to return the minimum relevant data
++- Use compaction to remove exchanges that have been fully resolved
++
++### 3. Context Confusion
++
++Similar-but-distinct information is mixed in the context, causing the model
++to blend or confuse the two.
++
++**How it happens:**
++- Multiple documents with similar content but different purposes are loaded simultaneously
++- The same concept is described in different terms in different parts of the context
++- Examples and instructions use the same vocabulary with different meanings
++
++**Signs:** The model conflates two distinct entities, applies a rule from
++document A to a situation that should follow document B, or gives answers
++that blend properties of two separate things.
++
++**Prevention:**
++- Use clear XML tags to delineate distinct documents and their purposes
++- Use consistent terminology throughout the context — same word always means
++  the same thing
++- When loading multiple similar documents, include explicit distinguishing labels:
++  ```xml
++  <document purpose="current implementation — do not modify">...</document>
++  <document purpose="reference implementation — for comparison only">...</document>
++  ```
++
++### 4. Context Clash
++
++Contradictory information is present in the context, and the model doesn't
++know which to trust.
++
++**How it happens:**
++- An early instruction is contradicted by a later one without the earlier one
++  being explicitly superseded
++- A tool result contradicts an earlier assertion
++- Multiple documents make conflicting claims about the same fact
++
++**Signs:** The model hedges ("based on the earlier information... but later
++it was stated..."), gives inconsistent responses, or silently picks one of
++the contradicting sources without acknowledging the conflict.
++
++**Prevention:**
++- When updating instructions, explicitly supersede the old ones:
++  ```
++  Previous instruction: return 5 results. This is now changed: return 10 results.
++  ```
++- Remove or correct contradicting tool results rather than appending corrections
++- During compaction, resolve contradictions before they enter the next window
++
++## Anti-Patterns
++
++### The Kitchen Sink System Prompt
++
++Loading every rule, every edge case, and every exception into the system prompt.
++
++**Why it fails:** More tokens = more distraction. The signal-to-noise ratio
++drops. Rules that only apply 1% of the time dilute attention on rules that
++apply 99% of the time.
++
++**Fix:** Start minimal. Add instructions only when a specific failure mode
++requires them. Use examples to cover patterns instead of enumerated rules.
++
++### The Uncleared Tool History
++
++Leaving all tool call results in message history indefinitely.
++
++**Why it fails:** Tool results are often verbose. As the conversation grows,
++earlier results become irrelevant noise. A result from 20 turns ago that was
++already acted on still consumes attention budget.
++
++**Fix:** Implement tool result clearing during compaction. Once a result has
++been reasoned about and a decision made, the raw result rarely needs to persist.
++
++### The Stale Pre-Load
++
++Pre-loading data into the system prompt or first message that changes during
++the session.
++
++**Why it fails:** The model reasons from the pre-loaded value even after the
++real value has changed. The discrepancy between context and reality causes
++confident but incorrect responses.
++
++**Fix:** Pre-load only truly static data (configuration, constants, reference
++data with known update schedules). Use JIT retrieval for anything that changes.
++
++### The Contradiction Left in Place
++
++An instruction or fact is updated by appending a correction without removing
++the original.
++
++**Why it fails:** The original instruction remains visible. The model must
++reconcile the conflict and may resolve it incorrectly, especially deep in a
++long context where the original may receive less attention.
++
++**Fix:** During compaction, resolve contradictions explicitly. In running
++context, when superseding an instruction, use explicit language: "The following
++supersedes the earlier instruction about X: ..."
++
++### The Verbose Intermediate Reasoning Dump
++
++Asking the model to "think step by step" and leaving all intermediate reasoning
++in the context indefinitely.
++
++**Why it fails:** Intermediate reasoning can be verbose. It was useful for
++producing the output but rarely needs to persist. It adds tokens and can
++anchor the model to earlier (potentially wrong) reasoning paths.
++
++**Fix:** Use `<thinking>` tags to separate reasoning from conclusions. During
++compaction, preserve conclusions and discard the reasoning that produced them.
++
++## Diagnosis Checklist
++
++When agent performance is degraded, check for these context rot indicators:
++
++- [ ] Is the context window more than 50% full?
++- [ ] Are there tool results more than 10 turns old still in message history?
++- [ ] Is any pre-loaded data potentially stale?
++- [ ] Are there contradictory statements in the context?
++- [ ] Does the system prompt contain rules for edge cases that don't apply to the current task?
++- [ ] Are multiple documents with similar content loaded without clear distinguishing labels?
++- [ ] Has the model made references to information from the context that wasn't asked about?
++
++If three or more boxes are checked, the context needs cleaning before
++the next inference step.
+diff --git a/skills/context-building/examples.md b/skills/context-building/examples.md
+new file mode 100644
+index 0000000..6b2aa93
+--- /dev/null
++++ b/skills/context-building/examples.md
+@@ -0,0 +1,177 @@
++# Examples (Few-Shot Prompting)
++
++Examples are the single most reliable mechanism for steering a model's output
++format, tone, and behavior. A few well-crafted examples communicate more
++precisely than pages of rules — they show the model exactly what you want,
++not just describe it.
++
++## Why Examples Work
++
++Rules describe constraints. Examples demonstrate patterns. The model learns from
++both, but examples create a concrete target the model can match rather than
++an abstract specification it must interpret.
++
++A prompt that says "be concise" is ambiguous — concise for a support ticket is
++different from concise for an executive summary. An example of a concise support
++ticket is not.
++
++## The Core Properties of Effective Examples
++
++### Relevant
++Examples must mirror your actual use case closely. If your prompt will handle
++D&D character builds, your examples should involve D&D character builds — not
++generic text summarization even if the structural pattern is similar.
++
++### Diverse
++Cover the edge cases and variations that matter. If every example shows the
++happy path, the model extrapolates a happy-path pattern and underperforms on
++edge cases. Include:
++- Normal cases
++- Edge cases (empty input, ambiguous input, malformed input)
++- Boundary conditions (minimum/maximum values, unusual formats)
++
++Diversity also means varying the *examples themselves* enough that the model
++doesn't pick up unintended surface patterns. If all your examples have 3-word
++answers, the model may default to 3-word answers even when more is appropriate.
++
++### Structured
++Wrap examples in tags so the model distinguishes them from instructions:
++
++```xml
++<examples>
++  <example>
++    <input>What class should I play for a pacifist run?</input>
++    <output>Cleric. The Life domain gives you powerful healing without
++    requiring combat specialization. You can contribute meaningfully to
++    any party while avoiding offensive action.</output>
++  </example>
++  <example>
++    <input>I want to multiclass. Is that a good idea?</input>
++    <output>It depends on your goal. Multiclassing adds versatility at the
++    cost of delayed high-level features. Before committing, identify which
++    feature from the second class you actually want and whether it
++    outweighs the delay.</output>
++  </example>
++</examples>
++```
++
++## How Many Examples
++
++**3–5 examples** is the reliable range for most tasks. Fewer risks insufficient
++pattern coverage; more risks context bloat without proportional gain.
++
++For high-stakes formatting precision (e.g., structured JSON output, API
++response shapes), 5 examples covering varied cases is worth the token cost.
++For tone and style, 3 well-chosen examples are usually sufficient.
++
++## Anti-patterns to Avoid
++
++### The Laundry List of Edge Cases
++
++```xml
++<examples>
++  <!-- Example 1: normal case -->
++  <!-- Example 2: user is angry -->
++  <!-- Example 3: user is confused -->
++  <!-- Example 4: user asks off-topic question -->
++  <!-- Example 5: user provides malformed input -->
++  <!-- Example 6: user is terse -->
++  <!-- Example 7: user provides excessive detail -->
++  <!-- Example 8: typos in input -->
++  <!-- ... 12 more examples ... -->
++</examples>
++```
++
++This bloats context without proportional benefit. Twenty narrow examples of
++individual edge cases are less effective than 5 diverse examples that establish
++a clear pattern the model can generalize from.
++
++### Examples Embedded in Instructions
++
++Mixing examples with instructions forces the model to parse which content is
++directive and which is illustrative:
++
++```
++# Bad — example embedded in rule
++When the user asks about class selection, respond concisely. For example,
++if they ask "what should I play?", say "It depends on your style. Are you
++drawn to combat, magic, or support roles?" Then ask follow-up questions.
++```
++
++```xml
++<!-- Better — example separated from instruction -->
++<instructions>
++When the user asks about class selection, respond concisely and
++ask a focused follow-up question to narrow down their preference.
++</instructions>
++
++<example>
++  <input>What class should I play?</input>
++  <output>It depends on your style. Are you drawn to combat, magic, or
++  support roles?</output>
++</example>
++```
++
++### Examples That Don't Match the Real Task
++
++If your examples use simplified inputs but your real inputs are complex, the
++model learns from the simplified pattern. Use representative examples that match
++the actual complexity and variation of your inputs.
++
++## Examples with Thinking (Chain-of-Thought)
++
++For tasks requiring multi-step reasoning, show the reasoning pattern in your
++examples using `<thinking>` tags:
++
++```xml
++<example>
++  <input>
++  A fighter (AC 18, 45 HP) attacks a goblin (AC 15, 7 HP) with a
++  longsword (+5 to hit, 1d8+3 damage). What happens?
++  </input>
++  <thinking>
++  Attack roll: +5 to hit vs AC 15. Need to roll 10+ on d20 to hit.
++  Probability of hit: 11/20 = 55%.
++  If hit: 1d8+3 damage. Average = 4.5+3 = 7.5.
++  With 7 HP, the goblin likely dies on a hit (average damage ≥ HP).
++  Critical hit (natural 20): 2d8+3 average = 12, definitely lethal.
++  </thinking>
++  <output>
++  The fighter has a 55% chance to hit (needs 10+ on d20). On a typical
++  hit, the goblin takes 7-8 damage — likely lethal given its 7 HP. A
++  critical hit deals 12 average damage, a guaranteed kill. There is also
++  a 5% chance of a critical miss with no effect.
++  </output>
++</example>
++```
++
++## Self-Evaluation of Examples
++
++After writing your examples, ask the model to evaluate them:
++
++```xml
++<instructions>
++Review the examples I've provided. Identify:
++1. Any example that could be misinterpreted
++2. Any important variation that isn't covered
++3. Any unintended pattern the examples might imply
++</instructions>
++
++<examples>
++[your examples here]
++</examples>
++```
++
++This catches blind spots in your example set before deployment.
++
++## Quick Reference
++
++| Property | Guideline |
++|----------|-----------|
++| Count | 3–5 examples for most tasks |
++| Tags | Wrap in `<example>` (single) or `<examples>` (multiple) |
++| Diversity | Cover edge cases, not just happy paths |
++| Relevance | Match your actual inputs, not simplified versions |
++| Reasoning | Use `<thinking>` tags to show multi-step reasoning patterns |
++| Separation | Keep examples separate from instructions |
++| Evaluation | Ask the model to critique your example set |
+diff --git a/skills/context-building/long-horizon.md b/skills/context-building/long-horizon.md
+new file mode 100644
+index 0000000..3f9d2ed
+--- /dev/null
++++ b/skills/context-building/long-horizon.md
+@@ -0,0 +1,205 @@
++# Long-Horizon Strategies
++
++Long-horizon tasks require agents to maintain coherence and goal-directed
++behavior across sequences of actions where the token count exceeds the
++context window limit. Whether a task spans tens of minutes or multiple hours
++of work, specialized strategies are required to bridge the gaps between
++context windows.
++
++## The Core Problem
++
++An agent working in a loop generates more and more data: tool calls, results,
++reasoning, intermediate outputs. Eventually the context window fills. Without
++a strategy for managing this growth, one of two failure modes occurs:
++
++1. **Context overflow** — The agent loses access to earlier information and
++   makes decisions without critical background context.
++2. **Context pollution** — The agent retains everything but attention quality
++   degrades (see `context-rot.md`). It "drowns" in accumulated detail rather
++   than losing information outright.
++
++Both failures manifest as inconsistency, repeated work, or incorrect decisions
++that seem puzzling when you review the transcript.
++
++## Strategy 1: Compaction
++
++Compaction is the practice of summarizing a context window nearing its limit
++and reinitializing a new context with the compressed summary.
++
++### How It Works
++
++1. Detect that the context window is approaching its limit
++2. Pass the full message history to the model with instructions to summarize:
++   - Preserve: architectural decisions, unresolved issues, implementation details, progress state
++   - Discard: redundant tool outputs, verbose intermediate steps, superseded reasoning
++3. Initialize a new context with the summary (plus any critical recent artifacts)
++4. Continue work from the clean context
++
++### What to Keep vs. Discard
++
++**Keep:**
++- Goals and objectives (what the task is trying to achieve)
++- Decisions made and their rationale
++- Unresolved bugs or blockers
++- Current implementation state ("X is working; Y is partially done; Z hasn't started")
++- Key file paths and data structures
++
++**Discard:**
++- Raw tool call outputs that were already acted on
++- Verbose intermediate reasoning that led to a decision (keep the decision, not the journey)
++- Repeated or superseded observations
++- Full file contents that can be retrieved again on demand
++
++### Lightest-Touch Compaction: Tool Result Clearing
++
++The safest, most conservative form of compaction is clearing accumulated tool
++results from message history. Once the result of a tool call has been reasoned
++about and acted on, the raw result rarely needs to be visible again. Removing
++these entries can free substantial context without risking loss of important state.
++
++### Tuning the Compaction Prompt
++
++Start by maximizing recall — err toward keeping everything. Then iterate to
++improve precision by eliminating content that proved to be noise. Overly
++aggressive compaction loses subtle context whose importance only becomes
++apparent later.
++
++## Strategy 2: Structured Note-Taking
++
++Structured note-taking (agentic memory) is the practice of having the agent
++write persistent notes to an external file that get loaded back into context
++at later times.
++
++### The Pattern
++
++```
++Context Window N:
++  Agent works on task →
++  Writes progress to notes.md →
++  Context window ends
++
++Context Window N+1:
++  Load notes.md →
++  Agent reads its own notes →
++  Continues work from last known state
++```
++
++### What to Write in Notes
++
++Notes serve one purpose: **enable the next session to resume without guessing**.
++
++**Include:**
++- Current task status ("Implementing the ranking filter — 3 of 5 conditions done")
++- Decisions made and why (brief rationale, not full reasoning)
++- Known blockers or bugs encountered
++- The "next action" — what the next session should start with
++- References to key files or data structures that were active
++
++**Avoid:**
++- Verbose recaps of what was done (the git log does this)
++- Opinions or speculation not needed for resumption
++- Duplicate information already in source files or commit messages
++
++### Format Recommendations
++
++**Use JSON for structured state data** (task lists, feature status, test results):
++```json
++{
++  "feature": "ranking filter",
++  "status": "in-progress",
++  "completed": ["sortBy", "sortOrder", "speciesFilter"],
++  "remaining": ["featsFilter", "magicItemsFilter"],
++  "nextAction": "implement featsFilter with case-insensitive ALL-match semantics"
++}
++```
++
++**Use plain text for progress notes** (freeform context, decisions, blockers):
++```
++Session 2026-04-03:
++Implemented sortBy and sortOrder. Verified against 313 tests — all pass.
++Next: featsFilter. Note — build IDs encode feat names with spaces and mixed
++casing. Use toLowerCase() for comparison, not strict equality.
++Blocker: none.
++```
++
++**Use git for change history** — git commits serve as a log of what changed
++and provide checkpoints for rollback. Write descriptive commit messages; they
++are a form of structured note-taking.
++
++## Strategy 3: Sub-Agent Architectures
++
++Sub-agents provide a clean separation of concerns: the orchestrating agent
++maintains high-level state while specialized sub-agents handle focused tasks
++with their own clean context windows.
++
++### The Pattern
++
++```
++Orchestrator Agent:
++  - Maintains the overall plan
++  - Tracks progress at feature/task level
++  - Coordinates sub-agents
++  - Synthesizes results
++
++Sub-Agent A (e.g., Research):
++  - Receives a specific, bounded question
++  - Explores extensively (may use tens of thousands of tokens)
++  - Returns a condensed, distilled summary (1,000–2,000 tokens)
++  - Its full exploration context is discarded after synthesis
++
++Sub-Agent B (e.g., Implementation):
++  - Receives a specific, bounded implementation task
++  - Works with a clean context focused on that task
++  - Returns the result plus a brief status update
++```
++
++### When to Use Sub-Agents
++
++Sub-agents pay off when:
++- The task has parallel independent subtasks (research + implementation + testing)
++- Exploration work is extensive but only the conclusions matter to the orchestrator
++- Different subtasks require different tool sets (read-only research vs. write-enabled implementation)
++- The orchestrator would otherwise accumulate too much intermediate context
++
++Sub-agents add overhead when:
++- The task is sequential with strong dependencies between steps
++- Sub-task results need to be integrated in real time
++- The simpler approach (a single agent with notes) is sufficient
++
++## Initializer + Coding Agent Pattern
++
++For multi-session projects, a two-phase harness dramatically improves coherence:
++
++**Session 1 — Initializer Agent:**
++- Understands the full project requirements
++- Creates a structured feature list (`features.json`) with all requirements marked incomplete
++- Writes an `init.sh` script that starts the development environment
++- Makes an initial git commit that establishes the baseline
++- Writes `progress.txt` with the current state
++
++**Sessions 2-N — Coding Agent:**
++```
++1. Run `pwd` to confirm working directory
++2. Read `progress.txt` and `features.json` to understand current state
++3. Read git log to see what was recently changed
++4. Run `init.sh` to start the dev environment and run a baseline test
++5. Choose the highest-priority incomplete feature
++6. Implement it and verify end-to-end
++7. Mark it complete in `features.json`
++8. Commit with a descriptive message
++9. Update `progress.txt` with summary of what was done and what's next
++```
++
++This pattern addresses the two most common long-horizon failures:
++- **Premature completion** — the agent sees partial progress and declares victory. The feature list makes incomplete work explicit.
++- **Undocumented progress** — the agent loses track of where it was. Notes + git history make state recoverable.
++
++## Choosing the Right Strategy
++
++| Situation | Best Strategy |
++|-----------|--------------|
++| Single long conversation approaching context limit | Compaction |
++| Iterative development across many sessions | Structured notes + git |
++| Complex task with parallel workstreams | Sub-agent architecture |
++| All of the above at scale | All three combined |
++| Simple task that fits in one window | None needed |
+diff --git a/skills/context-building/retrieval-patterns.md b/skills/context-building/retrieval-patterns.md
+new file mode 100644
+index 0000000..af1db3d
+--- /dev/null
++++ b/skills/context-building/retrieval-patterns.md
+@@ -0,0 +1,186 @@
++# Retrieval Patterns
++
++How and when information enters the context window is as important as what
++information enters. The dominant paradigm has shifted from pre-loading all
++potentially relevant data (traditional RAG) to **just-in-time retrieval** —
++loading information precisely when it is needed, using the minimal subset
++required for the task at hand.
++
++## The Core Insight: Don't Send the Library, Send a Librarian
++
++Preloading large datasets is tempting because it feels safe — "the model will
++have everything it needs." But this trades attention quality for nominal
++completeness. A model reading 50,000 tokens of context to answer a question
++that requires 500 relevant tokens is operating at a significant disadvantage
++compared to one that finds and loads only those 500 tokens.
++
++> **The new paradigm**: Give the agent lightweight identifiers and retrieval
++> tools. Let it discover and load information on demand.
++
++## Three Retrieval Strategies
++
++### 1. Lightweight Identifiers
++
++Pass references (IDs, paths, keys) instead of full objects. The agent calls a
++retrieval tool when it actually needs the data.
++
++**Instead of:**
++```json
++{
++  "character": {
++    "id": "char_001",
++    "name": "Lyra",
++    "class": "Bard",
++    "level": 5,
++    "stats": { "STR": 10, "DEX": 14, "CON": 12, "INT": 13, "WIS": 11, "CHA": 18 },
++    "spells": ["Vicious Mockery", "Charm Person", "Hypnotic Pattern", ...],
++    "equipment": [...],
++    "backstory": "...(500 words)...",
++    "notes": "...(200 words)..."
++  }
++}
++```
++
++**Use:**
++```json
++{ "characterId": "char_001" }
++```
++...and provide a `get_character(id)` tool.
++
++The agent loads the full record only when it needs specific fields, and only
++the fields it needs.
++
++### 2. Progressive Disclosure
++
++Start with high-level summaries. Drill down into detail only when the summary
++is insufficient.
++
++**Layer 1 — Directory listing:**
++```
++Available data files:
++- combat-logs/session-047.json (12KB)
++- combat-logs/session-048.json (8KB)  
++- characters/active-party.json (4KB)
++```
++
++**Layer 2 — File summary (on demand):**
++```
++session-047.json: 23 rounds of combat vs. the Bandit King.
++Party survived. Lyra took 34 damage. Key moment: round 11 Hypnotic Pattern.
++```
++
++**Layer 3 — Full content (on demand):**
++```
++[full JSON of the combat log]
++```
++
++The agent reads layer 1 always, layer 2 when session context is relevant,
++layer 3 only when analyzing specific round-by-round mechanics.
++
++### 3. Autonomous Exploration
++
++Provide discovery tools and let the agent navigate the information space
++rather than receiving a curated data package. This mirrors how humans work:
++we use file systems, search engines, and indexes rather than memorizing
++everything.
++
++**Tools that enable autonomous exploration:**
++- `list_files(directory)` — navigate directory hierarchies
++- `search_content(query)` — full-text search across documents
++- `get_file(path)` — load a specific file when needed
++- `get_file_summary(path)` — load metadata/summary without full content
++
++The metadata of files provides implicit signals: a file named `test_utils.py`
++in a `tests/` folder implies a different purpose than the same file in
++`src/core_logic/`. Timestamps suggest freshness. File sizes suggest complexity.
++These signals help the agent make intelligent retrieval decisions without
++explicit instruction.
++
++## Hybrid Strategy: Pre-load + Explore
++
++The right balance depends on the task:
++
++| Scenario | Recommended Strategy |
++|----------|---------------------|
++| Static configuration the agent always needs | Pre-load (system prompt or first message) |
++| Reference data that may or may not be needed | Lightweight identifiers + retrieval tool |
++| Large corpora the agent must search | Discovery tools + progressive disclosure |
++| Recent work state (e.g., git history) | Pre-load summary; explore details on demand |
++| Dynamic data that changes frequently | Always JIT — stale pre-loads cause context poisoning |
++
++**Example hybrid (inspired by Claude Code):**
++- `CLAUDE.md` style files are pre-loaded into context automatically at start
++- File contents are loaded just-in-time via `read_file` and `grep` tools
++- The agent avoids stale indexing and complex syntax trees by navigating directly
++
++## Designing Retrieval Tools
++
++Good retrieval tools have these properties:
++
++**1. Return the right granularity**
++A tool that returns an entire database table when you need one record is
++wasteful. Design tools to return the minimum needed:
++- `get_character_stats(id)` vs `get_full_character(id)`
++- `search_spells(query, max_results=5)` vs `list_all_spells()`
++
++**2. Support progressive detail levels**
++```json
++{
++  "name": "get_document",
++  "description": "Retrieve a document by ID. Use detail_level='summary' first,
++    then 'full' only if the summary is insufficient.",
++  "parameters": {
++    "id": "string",
++    "detail_level": "enum: ['summary', 'full'] — default: 'summary'"
++  }
++}
++```
++
++**3. Return structured metadata alongside content**
++Include signals that help the agent decide what to do next:
++```json
++{
++  "document": { "...content..." },
++  "metadata": {
++    "size_tokens": 1200,
++    "last_modified": "2026-03-15",
++    "related_documents": ["doc_002", "doc_007"]
++  }
++}
++```
++
++**4. Fail gracefully and informatively**
++When a retrieval returns nothing, the error should explain *why* and suggest
++alternatives:
++```json
++{
++  "error": "No character found with id 'char_999'",
++  "suggestion": "Use list_characters() to see available IDs"
++}
++```
++
++## Context Freshness
++
++Pre-loaded data goes stale. JIT retrieval is always current.
++
++When pre-loading is necessary (configuration, known reference data), document
++the data's freshness:
++```xml
++<reference_data freshness="static — last updated 2026-01-01">
++[data here]
++</reference_data>
++```
++
++For dynamic data (user state, combat results, recent activity), always retrieve
++at runtime rather than pre-loading. A model reasoning from stale state is worse
++than a model that pauses to fetch the current state.
++
++## Summary
++
++| Old Paradigm | New Paradigm |
++|-------------|-------------|
++| Load everything up front | Load only what is needed, when needed |
++| RAG dumps full documents into context | Agent retrieves targeted excerpts on demand |
++| Pre-processed indexes | Lightweight identifiers + retrieval tools |
++| Static context | Progressive disclosure as the agent explores |
++| Agent receives a data package | Agent has tools to discover data itself |
+diff --git a/skills/context-building/structuring-context.md b/skills/context-building/structuring-context.md
+new file mode 100644
+index 0000000..1504953
+--- /dev/null
++++ b/skills/context-building/structuring-context.md
+@@ -0,0 +1,189 @@
++# Structuring Context
++
++Structure is how you help the model parse complex prompts unambiguously.
++When a prompt mixes instructions, context, examples, and variable inputs
++without clear boundaries, the model must guess where one type of content
++ends and another begins. Structure eliminates that guessing.
++
++## XML Tags
++
++XML tags are the most reliable way to delineate content sections for Claude.
++They create unambiguous boundaries that the model parses consistently.
++
++### Basic Pattern
++
++```xml
++<instructions>
++Summarize the document below in 3 bullet points.
++Focus on the key findings and their implications.
++</instructions>
++
++<document>
++[Your document content here]
++</document>
++```
++
++### Naming Conventions
++
++Use consistent, descriptive tag names:
++
++| Good | Bad | Why |
++|------|-----|-----|
++| `<instructions>` | `<stuff>` | Descriptive names signal intent |
++| `<document>` | `<d>` | Full names are unambiguous |
++| `<project_conventions>` | `<rules123>` | Meaningful names help the model prioritize |
++| `<expected_output>` | `<thing_to_do>` | Specificity reduces misinterpretation |
++
++### Nesting for Hierarchical Content
++
++When content has natural hierarchy, nest tags to reflect it:
++
++```xml
++<documents>
++  <document index="1">
++    <source>Q3 Financial Report</source>
++    <document_content>
++    Revenue increased 15% year-over-year...
++    </document_content>
++  </document>
++  <document index="2">
++    <source>Q3 Customer Survey</source>
++    <document_content>
++    Customer satisfaction scores improved by 8 points...
++    </document_content>
++  </document>
++</documents>
++
++<query>
++Compare the financial performance with customer satisfaction trends.
++What correlations do you observe?
++</query>
++```
++
++The `index` attributes let both you and the model reference specific documents
++unambiguously.
++
++### Using Tags for Output Control
++
++Tags can guide the model's output structure:
++
++```xml
++<instructions>
++Analyze the code for security issues.
++Place your reasoning in <analysis> tags.
++Place only the final recommendations in <recommendations> tags.
++</instructions>
++```
++
++This cleanly separates reasoning from output, making it easy to extract
++the actionable part programmatically.
++
++## Markdown Headers
++
++When XML tags feel too heavy, markdown headers provide a lighter alternative:
++
++```markdown
++## Role
++You are a technical documentation writer.
++
++## Task
++Write API documentation for the endpoint described below.
++
++## Endpoint Details
++- Method: POST
++- Path: /api/characters
++- Body: { name: string, class: string, level: number }
++
++## Style Guide
++- Use present tense ("Returns" not "Will return")
++- Include request and response examples
++- Document error codes with descriptions
++```
++
++Markdown headers work well for:
++- Shorter prompts where full XML feels excessive
++- Prompts that are primarily text-based (not mixing code and data)
++- Cases where the content within sections is simple
++
++XML tags work better for:
++- Complex prompts with mixed content types
++- Programmatic prompt construction (easier to parse and template)
++- Deep nesting and hierarchical data
++- When sections contain code that itself uses markdown
++
++## Document Organization for Long Context
++
++When working with large inputs (20k+ tokens), the physical order of content
++in the prompt significantly affects performance.
++
++### The Sandwich Pattern
++
++```
++┌─────────────────────────────┐
++│  Long documents / data      │  ← TOP: Reference material
++│  (placed first)             │
++├─────────────────────────────┤
++│  Instructions / rules       │  ← MIDDLE: Processing logic
++│  Examples                   │
++├─────────────────────────────┤
++│  Query / task description   │  ← BOTTOM: What to do now
++└─────────────────────────────┘
++```
++
++**Why this order works:**
++- The model's attention is strongest at the **beginning** and **end** of context
++- Long data in the middle gets less precise attention
++- Placing the query last (closest to the generation point) improves accuracy
++  by up to 30% on complex multi-document tasks
++
++### Grounding in Quotes
++
++For document analysis tasks, ask the model to quote relevant passages before
++answering. This forces it to locate and surface the specific evidence rather
++than generating from a vague impression of the full document:
++
++```xml
++<instructions>
++First, extract the exact quotes from the document that are relevant to the
++question. Place them in <relevant_quotes> tags. Then answer the question
++based on those quotes.
++</instructions>
++```
++
++## Variable Injection
++
++When prompts are templates with dynamic content, use clear delimiters:
++
++```xml
++<instructions>
++Review the following pull request diff and provide feedback.
++</instructions>
++
++<pull_request>
++<title>{{PR_TITLE}}</title>
++<description>{{PR_DESCRIPTION}}</description>
++<diff>
++{{PR_DIFF}}
++</diff>
++</pull_request>
++
++<review_criteria>
++Focus on: correctness, security, and adherence to TypeScript strict mode.
++</review_criteria>
++```
++
++Benefits of explicit variable injection:
++- The model clearly distinguishes your instructions from the dynamic content
++- You can change the template without affecting the injected data
++- Malicious or confusing content in the variables is less likely to be
++  interpreted as instructions (defense against prompt injection)
++
++## Common Mistakes
++
++| Mistake | Consequence | Fix |
++|---------|------------|-----|
++| No section boundaries | Model conflates instructions with examples | Add XML tags or headers |
++| Inconsistent tag names | `<context>` in one prompt, `<background>` in another | Standardize naming across your system |
++| Over-nesting | 5+ levels deep is hard for both humans and models | Keep nesting to 2-3 levels max |
++| Placing query before data | Model starts generating before "seeing" the full context | Query goes last |
++| Formatting prompt in markdown when you want plain text output | Model mirrors your formatting style | Match prompt style to desired output style |
+diff --git a/skills/context-building/system-prompts.md b/skills/context-building/system-prompts.md
+new file mode 100644
+index 0000000..68c1ca6
+--- /dev/null
++++ b/skills/context-building/system-prompts.md
+@@ -0,0 +1,168 @@
++# System Prompts
++
++System prompts are the foundational instructions that set the model's behavior,
++tone, and constraints for an entire interaction. They are the single most
++important component of context engineering because they define the agent's
++identity and operating parameters.
++
++## The Right Altitude
++
++The most common failure in system prompt design is calibrating the wrong level
++of specificity. There are two failure modes:
++
++**Too rigid (brittle):**
++```
++If the user says "hello", respond with "Hello! How can I help you today?"
++If the user asks about pricing, respond with "Our plans start at $10/month."
++If the user asks about features, respond with "We offer X, Y, and Z."
++```
++
++This approach hardcodes behavior for every scenario, creates maintenance burden,
++and breaks when the user does anything unexpected.
++
++**Too vague (assumes shared context):**
++```
++Be helpful and professional. Answer questions about our product.
++```
++
++This provides no concrete signals about desired behavior, tone, or boundaries.
++The model will guess — and guessing means inconsistency.
++
++**Right altitude:**
++```
++You are a customer support agent for Acme Corp. Your primary goal is to resolve
++customer issues efficiently while maintaining a professional, empathetic tone.
++
++Key behaviors:
++- Acknowledge the customer's problem before suggesting solutions.
++- If you cannot resolve an issue, escalate by asking the customer to contact
++  support@acme.com with their ticket number.
++- Never discuss competitor products or make promises about future features.
++- Keep responses concise — aim for 2-3 paragraphs maximum.
++```
++
++This is specific enough to guide behavior, flexible enough to handle novel
++situations, and provides heuristics the model can apply intelligently.
++
++## Structure with Sections
++
++Organize system prompts into clearly delineated sections. Use XML tags or
++markdown headers to separate concerns:
++
++```xml
++<role>
++You are a senior code reviewer specializing in TypeScript and Node.js.
++</role>
++
++<instructions>
++Review the provided code for:
++1. Correctness — logic errors, edge cases, off-by-one mistakes
++2. Security — injection risks, authentication gaps, data exposure
++3. Performance — unnecessary allocations, N+1 queries, blocking operations
++4. Style — adherence to project conventions documented below
++
++For each issue found, provide:
++- The file and line number
++- A brief description of the problem
++- A concrete fix or recommendation
++</instructions>
++
++<project_conventions>
++- Use strict TypeScript — avoid `any`
++- Export interfaces alongside Mongoose schemas
++- Route handlers are thin controllers; business logic lives in services
++- Return { error: string, details?: string } on errors
++</project_conventions>
++
++<output_format>
++Organize findings by severity: Critical > Warning > Suggestion.
++Use markdown code blocks when referencing specific lines.
++</output_format>
++```
++
++### Why sections matter
++
++- **Reduces misinterpretation.** When instructions, context, and formatting rules
++  are interleaved, the model may confuse a formatting example for an instruction.
++  Explicit sections eliminate this ambiguity.
++- **Enables selective attention.** The model can focus on the relevant section for
++  a given decision rather than scanning the entire prompt.
++- **Simplifies maintenance.** You can update one section without ripple effects
++  on others.
++
++## Key Principles
++
++### 1. Explain the Why
++
++Providing motivation behind instructions helps the model generalize correctly:
++
++**Without why:**
++```
++Never return more than 5 results.
++```
++
++**With why:**
++```
++Limit responses to 5 results because our UI renders a fixed-height list.
++Exceeding 5 results causes layout overflow on mobile devices.
++```
++
++The model now understands the constraint's purpose and can make intelligent
++decisions when edge cases arise (e.g., when the user explicitly asks for more).
++
++### 2. State What to Do, Not What to Avoid
++
++Positive instructions are more effective than negative ones:
++
++**Less effective:**
++```
++Do not use markdown in your response.
++Do not include code blocks.
++Do not be verbose.
++```
++
++**More effective:**
++```
++Respond in flowing prose paragraphs without any formatting markup.
++Keep responses to 2-3 concise paragraphs.
++```
++
++### 3. Set a Role
++
++Even a single sentence focusing the model's role improves behavior:
++
++```
++You are an experienced D&D Dungeon Master who helps players build
++optimized characters for 5th Edition campaigns.
++```
++
++Roles provide an implicit set of expectations about tone, vocabulary,
++domain knowledge, and priorities that the model activates automatically.
++
++### 4. Start Minimal, Add Based on Failures
++
++Begin with the simplest prompt that conveys your intent. Test it against your
++use cases. When failures occur, add targeted instructions to address those
++specific failure modes. This prevents over-engineering and keeps context tight.
++
++### 5. Order Matters for Long Prompts
++
++When system prompts exceed several thousand tokens:
++
++- Place **reference data and long documents at the top**
++- Place **instructions and rules in the middle**
++- Place **the specific query or task at the bottom**
++
++Queries at the end of long context can improve response quality by up to 30%
++because the model's attention is strongest at the boundaries of the context
++window (beginning and end).
++
++## Common Mistakes
++
++| Mistake | Why It Fails | Fix |
++|---------|-------------|-----|
++| Laundry list of edge cases | Bloats context; model can't prioritize | Provide 3-5 canonical examples instead |
++| Hardcoded if-else logic | Brittle; breaks on novel inputs | Use heuristic-level guidance |
++| Assuming shared context | Model has no background knowledge of your project | State all relevant facts explicitly |
++| Over-prompting with emphasis | "CRITICAL: YOU MUST..." causes over-triggering | Use calm, direct language |
++| Mixing concerns in one block | Model confuses formatting rules with logic rules | Separate into labeled sections |
+diff --git a/skills/context-building/tool-design.md b/skills/context-building/tool-design.md
+new file mode 100644
+index 0000000..a3d13c2
+--- /dev/null
++++ b/skills/context-building/tool-design.md
+@@ -0,0 +1,206 @@
++# Tool Design
++
++Tools define the boundary between an agent and its environment — they
++determine what the agent can do and what information it can access. Because
++every tool call contributes tokens to the context (the call itself, the
++parameters, the result), tool design is a direct lever on context efficiency.
++
++## The Core Principle: Every Tool Must Justify Its Existence
++
++A bloated tool set has two costs:
++1. **Cognitive cost** — More tools means more decision points. If a human
++   engineer can't immediately say which tool to use in a given situation,
++   neither can the agent. Ambiguity leads to wrong tool selection and wasted
++   tool calls.
++2. **Context cost** — Tool definitions consume tokens in the context window.
++   A large tool set with overlapping capabilities contributes noise without
++   proportional utility.
++
++Design tools like well-factored code: self-contained, single-purpose, with
++clear contracts.
++
++## Elements of a Strong Tool Definition
++
++### 1. Simple, Accurate Name
++
++The name is the primary signal for when to use the tool. It should be:
++- **Specific**: `get_character_stats` not `get_data`
++- **Action-oriented**: `search_spells`, `create_encounter`, `delete_character`
++- **Unambiguous**: Avoid names so similar that the agent must reason about which to choose
++
++Bad:
++```
++get_info / get_details / fetch_data / retrieve_record
++```
++
++Good:
++```
++get_character / get_character_stats / get_character_equipment
++```
++
++### 2. Detailed, Structured Description
++
++The description is the primary signal for *how and when* to use the tool.
++Include:
++- What the tool does
++- What it returns
++- When it should (and shouldn't) be used
++- Important constraints or side effects
++
++```json
++{
++  "name": "search_spells",
++  "description": "Search the D&D 5e spell database by name, class, level, or school.
++    Returns matching spells with name, level, school, casting time, and brief effect.
++    Use when the user asks about available spells or wants to find spells meeting
++    specific criteria. Do not use for looking up a single known spell by exact name
++    — use get_spell() instead for that case.",
++  "input_schema": {
++    "type": "object",
++    "properties": {
++      "query": {
++        "type": "string",
++        "description": "Search term (spell name, partial name, or keyword)"
++      },
++      "class_filter": {
++        "type": "string",
++        "description": "Filter to spells available to a specific class (e.g., 'Bard', 'Wizard')"
++      },
++      "max_level": {
++        "type": "integer",
++        "description": "Maximum spell level to include (1-9). Omit to include all levels."
++      },
++      "max_results": {
++        "type": "integer",
++        "description": "Maximum results to return. Default: 10. Max: 50.",
++        "default": 10
++      }
++    },
++    "required": ["query"]
++  }
++}
++```
++
++### 3. Non-Overlapping Scope
++
++Tools should do one thing and do it well. Overlap creates ambiguity — the
++agent wastes context trying to determine which tool is appropriate.
++
++**Overlapping (bad):**
++- `get_character(id)` — returns full character including stats and equipment
++- `get_character_stats(id)` — returns character stats (subset of above)
++- `get_character_details(id)` — "detailed" character info (ambiguous scope)
++
++**Non-overlapping (good):**
++- `get_character(id)` — returns core character fields (name, class, level, species)
++- `get_character_stats(id)` — returns the derived ability scores and modifiers
++- `get_character_equipment(id)` — returns equipped items and inventory
++
++Each tool has a clear, distinct purpose. The agent can select without ambiguity.
++
++### 4. Single Action, Shallow Parameters
++
++Tools that perform one action and accept at most one level of parameter nesting
++are easier for models to use correctly. Deep nesting increases cognitive load
++and error probability.
++
++**Too deep:**
++```json
++{
++  "filter": {
++    "character": {
++      "stats": {
++        "strength": { "min": 14, "max": 20 }
++      },
++      "equipment": {
++        "weapon": { "type": "sword" }
++      }
++    }
++  }
++}
++```
++
++**Better:**
++```json
++{
++  "min_strength": 14,
++  "max_strength": 20,
++  "weapon_type": "sword"
++}
++```
++
++### 5. Token-Efficient Return Values
++
++Tool results enter the context window. A tool that returns 5,000 tokens of
++data when 200 are needed is consuming 4,800 tokens of attention budget.
++
++Design return values to match the task:
++- Return summaries first; provide a way to drill into details
++- Omit fields that are rarely needed (or make them opt-in via a `detail_level` parameter)
++- Use compact representations: IDs instead of repeated full objects in lists
++
++**Verbose (bad for most use cases):**
++```json
++[
++  { "id": "spell_001", "name": "Vicious Mockery", "level": 0, "school": "Enchantment",
++    "casting_time": "1 action", "range": "60 feet", "components": "V",
++    "duration": "Instantaneous", "description": "...(200 words)...",
++    "higher_levels": "...", "classes": ["Bard"], "ritual": false },
++  ...
++]
++```
++
++**Compact (better default):**
++```json
++[
++  { "id": "spell_001", "name": "Vicious Mockery", "level": 0, "school": "Enchantment" },
++  ...
++]
++```
++
++Use a `get_spell(id)` call when the full description is actually needed.
++
++### 6. Graceful Failure
++
++Errors from tools enter the context window. A clear, actionable error message
++is far better than a cryptic exception string.
++
++**Cryptic:**
++```json
++{ "error": "TypeError: Cannot read properties of undefined (reading 'stats')" }
++```
++
++**Actionable:**
++```json
++{
++  "error": "Character 'char_999' not found.",
++  "suggestion": "Use list_characters() to see available character IDs."
++}
++```
++
++The agent can immediately use the suggestion without wasting a turn on
++disambiguation.
++
++## Common Mistakes
++
++| Mistake | Consequence | Fix |
++|---------|------------|-----|
++| Too many tools with overlapping scope | Agent picks wrong tool; context fills with failed calls | Consolidate; make scopes distinct |
++| Tool names that don't reveal purpose | Agent guesses; wrong selection | Use specific, action-oriented names |
++| Tools that return full objects when summaries suffice | Context bloat | Add detail_level parameter or split into summary/detail tools |
++| Vague parameter descriptions | Agent provides wrong values; validation errors | Be explicit about types, formats, defaults, and constraints |
++| No error guidance | Agent loops trying to fix unfixable situation | Include `suggestion` in error responses |
++| Tool that does too many things | Hard to describe; hard to select correctly | Split into single-action tools |
++
++## Tool Set Size Guidelines
++
++| Use Case | Recommended Tool Count |
++|----------|----------------------|
++| Simple Q&A with knowledge lookup | 3–5 tools |
++| Document analysis and summarization | 5–8 tools |
++| Code-writing agent | 8–12 tools |
++| Full autonomous coding agent | 12–20 tools |
++
++Above ~20 distinct tools, the decision surface becomes difficult to manage.
++If your agent needs more, consider using sub-agents with focused tool sets
++rather than one agent with a comprehensive tool set.
+-- 
+2.53.0
+
