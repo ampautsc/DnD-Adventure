@@ -38,10 +38,10 @@ jobs:
         with:
           path: DnD-Adventure
 
-      - name: Clone dnd-platform using PLATFORM_TOKEN
+      - name: Clone dnd-platform using PLATFORM_TOKEN_2
         run: |
           git clone \
-            https://x-access-token:${{ secrets.PLATFORM_TOKEN }}@github.com/${{ env.TARGET_REPO }}.git \
+            https://x-access-token:${{ secrets.PLATFORM_TOKEN_2 }}@github.com/${{ env.TARGET_REPO }}.git \
             dnd-platform
         env:
           GIT_TERMINAL_PROMPT: '0'
