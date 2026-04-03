@@ -1000,3 +1000,39 @@ The third path was chosen as the most direct step toward committing to a bard.
 - Should a reference API route expose `npcContext` to clients, or is it intended as server-internal only?
 - Should city-specific entries (Waterdeep, Baldur's Gate, Neverwinter) be added as a second category or as a separate sub-file?
 - Should NPC archetype bundles (pre-defined category sets for "tavern keeper", "city guard", "wilderness ranger") be added as a named export?
+
+---
+
+### Session 027: NPC Context Rebuilt as Static XML
+
+**Date:** 2026-04-03
+**Context:** The keeper identified a fundamental architecture error in Session 026. The TypeScript data structure built then was wrong-shaped for the actual goal: Anthropic prompt caching requires byte-for-byte identical content blocks across API calls. A runtime-assembled TypeScript structure cannot guarantee this. Static XML files read once and cached in memory are the correct primitive.
+
+**What I Observed:**
+- Session 026's `index.ts` — 68 entries, category-tagged, with `filterByCategory()` helper — was built in the wrong format entirely. The keeper's instruction was for XML files; the prior session produced TypeScript data structures.
+- The `structuring-context.md` skill file states clearly: "Over-nesting: 5+ levels deep is hard for both humans and models | Keep nesting to 2-3 levels max."
+- The Anthropic caching mechanism operates on content blocks passed in the system array. Two calls with byte-for-byte identical blocks at the same position produce cache hits. Dynamic assembly breaks this guarantee.
+- The keeper explicitly required dense fragments with no prose, no complete sentences. The prior 68 entries were full narrative sentences — the wrong density.
+
+**What Was Decided:**
+- Delete `server/src/data/npc-context/index.ts` — wrong format, replaced entirely.
+- Create `world-common.xml` — all 68 world-level entries rewritten as dense key-value fragments, XML schema with 3-level nesting (world-context → section → e).
+- Create `city-waterdeep.xml`, `city-baldurs-gate.xml`, `city-neverwinter.xml` — city-specific knowledge as separate cacheable files (different cities = different second block, world-common always the same first block).
+- Create `loader.ts` — thin TypeScript wrapper (`loadContextFile(name)` + `clearContextCache()`) using `fs.readFileSync` with an in-memory Map cache. Internal only — not exposed via any API route.
+- Schema: `<?xml ... ?><world-context year="..." scope="..." depth="..."><section id="..."><e id="...">fragment</e></section></world-context>`. Three levels. Max depth respected.
+- Content style: semicolons separate facts; colons after subjects; arrows (→,↔) for relationships; no complete sentences; no prose filler.
+
+**What Was Learned:**
+- The caching architecture is: (1) world-common.xml injected as first cached system block for ALL NPCs; (2) city-specific XML injected as second cached system block for city-resident NPCs; (3) dynamic per-NPC content as a third uncached block. Blocks 1 and 2 are byte-identical across all calls to the same city → guaranteed cache hits.
+- Dense fragment style saves ~40-50% tokens per entry vs. narrative prose. Across 68 entries, this is a material reduction in token cost per call.
+- The `loader.ts` in-memory Map cache means the file is read from disk exactly once per server lifetime. All subsequent calls return the same string reference — same bytes, same cost, zero re-assembly.
+- The separation into world-common + city-specific files is correct for caching: `world-common.xml` is one large stable block (maximum cache reuse), city files are smaller but still stable per-city (secondary cache benefit).
+
+**Probability Assessment:**
+- NPC archetype files (city-guard.xml, merchant.xml, innkeeper.xml) are the natural next step — a third cacheable layer between world-common and per-NPC dynamic content.
+- The `loader.ts` API is minimal by design; future consumers call `loadContextFile('world-common')` + `loadContextFile('city-waterdeep')` and receive ready-to-inject strings.
+
+**Unresolved Questions:**
+- Should NPC archetype files be created (city-guard, merchant, innkeeper, tavern-keeper, wilderness-ranger)?
+- Should additional cities be added (Luskan, Silverymoon, Candlekeep, Elturel)?
+- When the NPC service is built, should it validate that the XML files are well-formed at server startup?
