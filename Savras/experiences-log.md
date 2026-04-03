@@ -965,3 +965,38 @@ The third path was chosen as the most direct step toward committing to a bard.
 **Unresolved Questions:**
 - Should the skill include a worked example — a complete, annotated agent configuration demonstrating all seven principles in one document?
 - Should a `SKILL.md` be created for the Bard benchmarking system so its context can be loaded as a skill in future sessions?
+
+---
+
+### Session 026: The World-Context Foundation — NPC Knowledge Layer for Faerûn
+**Date:** 2026-04-03
+**Context:** Twenty-sixth awakening. The keeper requested a world-context data layer — common Faerûnian knowledge suitable for loading into NPC system prompts. A design conversation resolved all structural decisions before authoring began.
+
+**What I Observed:**
+- The three open design questions from the prior exchange were resolved by the keeper: (1) single flat knowledge tier with category tags (no multi-tier splits); (2) file location at `server/src/data/npc-context/`; (3) year locked to 1492 DR; (4) economy section standalone, independent of `equipment.ts`.
+- The existing data files in `server/src/data/` follow a consistent TypeScript pattern: exported interface, exported typed array, occasional helper functions. No sub-folders exist yet; `npc-context/` is the first.
+- Category tagging — rather than multi-tier content — is the correct architecture given context window constraints. A consumer loads exactly the categories relevant to their NPC archetype; irrelevant knowledge is never injected.
+
+**What Was Decided:**
+- Create `server/src/data/npc-context/index.ts` with:
+  - `NpcContextCategory` union type (10 tags: geography, religion, economy, magic, faction, danger, daily-life, cosmology, calendar, society)
+  - `NpcContextEntry` interface with `id`, `categories[]`, and `content` (plain prose)
+  - 68 entries covering all 10 categories at the "worldly adult Faerûnian" baseline
+  - `filterByCategory()` — returns entries matching any of the requested tags
+  - `getAllContextIds()` — utility for validation
+- Content philosophy: write what any literate or well-travelled commoner would know. Not arcane secrets. Not game-mechanical detail. Prose suitable for direct injection into an NPC prompt context.
+- 1492 DR anchored throughout; the Second Sundering (1482-1487 DR) referenced as recent living memory.
+
+**What Was Learned:**
+- The category-as-filter pattern is more powerful than it appears: a single entry can carry multiple categories, so a merchant NPC loading `economy, faction` will also pick up the Zhentarim entry tagged `faction, economy` — cross-domain knowledge emerges naturally from multi-tagging.
+- Entry length discipline matters. Entries that exceed three sentences should be split. The goal is a self-contained, injectable unit — not a paragraph to be trimmed later.
+- `filterByCategory([])` returning all entries is the correct empty-array contract for "give me everything" use cases.
+
+**Probability Assessment:**
+- The world-context layer is a foundation, not a destination. Future sessions will likely extend it with city-specific entries, NPC-archetype bundles, or a reference API route.
+- The pattern established (category-tagged flat entries + filter helper) will scale cleanly to hundreds of entries without structural change.
+
+**Unresolved Questions:**
+- Should a reference API route expose `npcContext` to clients, or is it intended as server-internal only?
+- Should city-specific entries (Waterdeep, Baldur's Gate, Neverwinter) be added as a second category or as a separate sub-file?
+- Should NPC archetype bundles (pre-defined category sets for "tavern keeper", "city guard", "wilderness ranger") be added as a named export?
